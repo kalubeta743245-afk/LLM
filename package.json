@@ -33,7 +33,8 @@
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
     "node-appwrite": "^26.2.0",
-    "openai": "^4.67.3"
+    "openai": "^4.67.3",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
