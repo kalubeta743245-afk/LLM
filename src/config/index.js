@@ -20,7 +20,7 @@ const optional = (name, fallback = '') => {
 };
 
 // ---- Core credentials / provider ----
-const NVIDIA_NIM_API_KEY = required('NVIDIA_NIM_API_KEY');
+const NVIDIA_NIM_API_KEY = optional('NVIDIA_NIM_API_KEY', '');
 const NVIDIA_NIM_BASE_URL = optional(
   'NVIDIA_NIM_BASE_URL',
   'https://integrate.api.nvidia.com/v1'
