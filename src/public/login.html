@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Galaxy LLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#003144;color:#fff;-webkit-font-smoothing:antialiased}
+        .liquid-glass{background:rgba(255,255,255,0.01);background-blend-mode:luminosity;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);position:relative;overflow:hidden}
+        .liquid-glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,0.45) 0%,rgba(255,255,255,0.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.15) 80%,rgba(255,255,255,0.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+        @keyframes fade-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .animate-fade-rise{animation:fade-rise .8s ease-out both}
+        .auth-input{background:rgba(255,255,255,0.04);border:1px solid hsl(0 0% 18%);color:#fff;width:100%;border-radius:9999px;padding:12px 20px;font-size:14px}
+        .auth-input:focus{outline:none;border-color:hsl(240 4% 66%)}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-black" style="background-image:url('https://source.unsplash.com/random/1920x1080/?space,stars,night');background-size:cover;background-blend-mode:overlay">
+    <div class="absolute inset-0 bg-black/60 -z-10"></div>
+
+    <nav class="relative z-10 mx-auto flex max-w-7xl w-full flex-row items-center justify-between px-8 py-6">
+        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Galaxy LLM<sup class="text-xs">®</sup></a>
+        <a href="/" class="liquid-glass rounded-full px-6 py-2.5 text-sm text-white transition-transform hover:scale-[1.03]">Back to Home</a>
+    </nav>
+
+    <main class="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
+        <div class="animate-fade-rise w-full max-w-md">
+            <div class="liquid-glass rounded-2xl p-8">
+                <h1 class="text-4xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Welcome back</h1>
+                <p class="mt-2 text-sm" style="color:hsl(240 4% 66%)">Sign in to continue your journey.</p>
+
+                <form id="login-form" class="mt-8 space-y-5">
+                    <div>
+                        <label class="block text-sm mb-2" style="color:hsl(240 4% 66%)">Email</label>
+                        <input id="email" type="email" required autocomplete="email" class="auth-input" />
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-2" style="color:hsl(240 4% 66%)">Password</label>
+                        <input id="password" type="password" required autocomplete="current-password" class="auth-input" />
+                    </div>
+
+                    <p id="error-msg" class="hidden text-sm" style="color:#f87171"></p>
+
+                    <button type="submit" id="submit-btn" class="liquid-glass w-full rounded-full px-6 py-3 text-sm text-white transition-transform hover:scale-[1.03]">Sign In</button>
+                </form>
+
+                <p class="mt-6 text-center text-sm" style="color:hsl(240 4% 66%)">New here? <a href="/register.html" class="text-white hover:underline">Create an account</a></p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const form=document.getElementById('login-form');
+        const errorMsg=document.getElementById('error-msg');
+        const submitBtn=document.getElementById('submit-btn');
+
+        form.addEventListener('submit',async e=>{
+            e.preventDefault();
+            errorMsg.classList.add('hidden');
+            submitBtn.disabled=true;
+            submitBtn.textContent='Signing in...';
+
+            const email=document.getElementById('email').value.trim();
+            const password=document.getElementById('password').value;
+
+            try{
+                const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+                const data=await res.json();
+
+                if(!res.ok)throw new Error(data.error?.message||'Login failed.');
+
+                localStorage.setItem('velorah_session',JSON.stringify({sessionId:data.session.id,userId:data.session.userId,expire:data.session.expire}));
+                window.location.href='/dashboard.html';
+            }catch(err){
+                errorMsg.textContent=err.message;
+                errorMsg.classList.remove('hidden');
+                submitBtn.disabled=false;
+                submitBtn.textContent='Sign In';
+            }
+        });
+    </script>
+</body>
+</html>

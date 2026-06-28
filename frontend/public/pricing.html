@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing — Galaxy LLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#003144;color:#fff;-webkit-font-smoothing:antialiased}
+        .liquid-glass{background:rgba(255,255,255,0.01);background-blend-mode:luminosity;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);position:relative;overflow:hidden}
+        .liquid-glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,0.45) 0%,rgba(255,255,255,0.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.15) 80%,rgba(255,255,255,0.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+        .liquid-glass-solid{background:rgba(255,255,255,0.04);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);position:relative;overflow:hidden}
+        .liquid-glass-solid::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,0.45) 0%,rgba(255,255,255,0.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.15) 80%,rgba(255,255,255,0.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+        @keyframes fade-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .animate-fade-rise{animation:fade-rise .8s ease-out both}
+        .animate-fade-rise-delay{animation:fade-rise .8s ease-out .2s both}
+        .animate-fade-rise-delay-2{animation:fade-rise .8s ease-out .4s both}
+        .animate-fade-rise-delay-3{animation:fade-rise .8s ease-out .6s both}
+        .pricing-card{transition:transform .2s ease,box-shadow .2s ease}
+        .pricing-card:hover{transform:scale(1.03)}
+        .feature-check{color:#34d399}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-black" style="background-image:url('/gemini-bg.png');background-size:cover;background-blend-mode:overlay">
+    <div class="absolute inset-0 bg-black/60 -z-10"></div>
+
+    <nav class="relative z-10 mx-auto flex max-w-7xl w-full flex-row items-center justify-between px-8 py-6">
+        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Galaxy LLM<sup class="text-xs">®</sup></a>
+        <div class="flex items-center gap-4">
+            <a href="/docs.html" class="text-sm transition-colors" style="color:hsl(240 4% 66%);hover:color-white">Docs</a>
+            <a href="/login.html" class="liquid-glass rounded-full px-5 py-2 text-sm text-white transition-transform hover:scale-[1.03]">Sign In</a>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-1 px-6 pb-20 pt-12 mx-auto w-full max-w-6xl">
+        <div class="text-center animate-fade-rise">
+            <h1 class="text-5xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Pricing</h1>
+            <p class="mt-3 text-sm" style="color:hsl(240 4% 66%)">Start free, scale as you grow. No hidden costs.</p>
+        </div>
+
+        <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Free -->
+            <div class="animate-fade-rise-delay pricing-card liquid-glass-solid rounded-2xl p-8 flex flex-col">
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Starter</h2>
+                <p class="mt-1 text-sm" style="color:hsl(240 4% 66%)">For tinkering and prototypes</p>
+                <div class="mt-6 flex items-baseline gap-1">
+                    <span class="text-5xl text-white" style="font-family:'Instrument Serif',serif">Free</span>
+                </div>
+                <ul class="mt-8 space-y-3 flex-1">
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 1,000 requests / month</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 1 API key</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 10 req / min rate limit</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Community support</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> OpenAPI-compatible</li>
+                </ul>
+                <a href="/register.html" class="liquid-glass mt-8 w-full text-center rounded-full px-6 py-3 text-sm text-white transition-transform hover:scale-[1.03] block">Get Started</a>
+            </div>
+
+            <!-- Pro -->
+            <div class="animate-fade-rise-delay-2 pricing-card liquid-glass-solid rounded-2xl p-8 flex flex-col relative">
+                <span class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-medium bg-white text-black rounded-full px-4 py-1">Most Popular</span>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Pro</h2>
+                <p class="mt-1 text-sm" style="color:hsl(240 4% 66%)">For serious builders</p>
+                <div class="mt-6 flex items-baseline gap-1">
+                    <span class="text-5xl text-white" style="font-family:'Instrument Serif',serif">$29</span>
+                    <span class="text-sm" style="color:hsl(240 4% 66%)">/month</span>
+                </div>
+                <ul class="mt-8 space-y-3 flex-1">
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 100,000 requests / month</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 10 API keys</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> 100 req / min rate limit</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Email support</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> All models available</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Usage analytics</li>
+                </ul>
+                <a href="/login.html" class="bg-white mt-8 w-full text-center rounded-full px-6 py-3 text-sm text-black font-medium transition-transform hover:scale-[1.03] block">Subscribe</a>
+            </div>
+
+            <!-- Enterprise -->
+            <div class="animate-fade-rise-delay-3 pricing-card liquid-glass-solid rounded-2xl p-8 flex flex-col">
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Enterprise</h2>
+                <p class="mt-1 text-sm" style="color:hsl(240 4% 66%)">For scale and compliance</p>
+                <div class="mt-6 flex items-baseline gap-1">
+                    <span class="text-5xl text-white" style="font-family:'Instrument Serif',serif">Custom</span>
+                </div>
+                <ul class="mt-8 space-y-3 flex-1">
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Unlimited requests</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Unlimited API keys</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Custom rate limits</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Priority support + SLA</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> Dedicated infrastructure</li>
+                    <li class="flex items-start gap-3 text-sm"><span class="feature-check mt-0.5">&#10003;</span> SSO &amp; audit logs</li>
+                </ul>
+                <a href="#" class="liquid-glass mt-8 w-full text-center rounded-full px-6 py-3 text-sm text-white transition-transform hover:scale-[1.03] block">Contact Us</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

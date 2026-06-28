@@ -1,0 +1,38 @@
+{
+  "name": "galaxy-llm",
+  "version": "0.1.0",
+  "description": "Galaxy LLM backend — OpenAI-compatible API gateway serving the Andromeda model (NVIDIA Nemotron 3 Ultra via OpenRouter).",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build:frontend": "npm --prefix frontend install && npm --prefix frontend run build",
+    "build": "npm run build:frontend",
+    "build:dev": "npm --prefix frontend run dev"
+  },
+  "keywords": [
+    "llm",
+    "openai",
+    "openrouter",
+    "nemotron",
+    "andromeda",
+    "galaxy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "node-appwrite": "^26.2.0",
+    "openai": "^4.67.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

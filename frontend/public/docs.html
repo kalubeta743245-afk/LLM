@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation — Galaxy LLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#003144;color:#fff;-webkit-font-smoothing:antialiased}
+        .liquid-glass{background:rgba(255,255,255,0.01);background-blend-mode:luminosity;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);position:relative;overflow:hidden}
+        .liquid-glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,0.45) 0%,rgba(255,255,255,0.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.15) 80%,rgba(255,255,255,0.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+        @keyframes fade-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .animate-fade-rise{animation:fade-rise .8s ease-out both}
+        pre{background:rgba(255,255,255,0.03);border:1px solid hsl(0 0% 18%);border-radius:12px;padding:20px;overflow-x:auto;font-size:13px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#d1d5db}
+        .tab-btn{color:hsl(240 4% 66%);border-bottom:2px solid transparent;padding:8px 16px;font-size:14px;cursor:pointer;transition:all .15s}
+        .tab-btn.active{color:#fff;border-bottom-color:#fff}
+        .tab-btn:hover{color:#fff}
+        .endpoint-card{background:rgba(255,255,255,0.02);border:1px solid hsl(0 0% 18%);border-radius:12px;padding:16px 20px}
+        .method-badge{font-size:11px;font-weight:600;letter-spacing:.05em;padding:2px 10px;border-radius:6px;text-transform:uppercase}
+        .method-post{background:rgba(52,211,153,0.12);color:#34d399}
+        .method-get{background:rgba(96,165,250,0.12);color:#60a5fa}
+        .qr-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid hsl(0 0% 18%);font-size:14px}
+        .qr-row:last-child{border-bottom:none}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-black" style="background-image:url('https://source.unsplash.com/random/1920x1080/?space,stars,night');background-size:cover;background-blend-mode:overlay">
+    <div class="absolute inset-0 bg-black/60 -z-10"></div>
+
+    <nav class="relative z-10 mx-auto flex max-w-7xl w-full flex-row items-center justify-between px-8 py-6">
+        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Galaxy LLM<sup class="text-xs">®</sup></a>
+        <div class="flex items-center gap-4">
+            <a href="/dashboard.html" class="text-sm hover:text-white transition-colors" style="color:hsl(240 4% 66%)">Dashboard</a>
+            <a href="/" class="liquid-glass rounded-full px-5 py-2 text-sm text-white transition-transform hover:scale-[1.03]">Home</a>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-1 px-6 pb-16 pt-4 mx-auto w-full max-w-4xl animate-fade-rise">
+        <h1 class="text-4xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Documentation</h1>
+        <p class="mt-3 text-sm" style="color:hsl(240 4% 66%)">Integrate with the Galaxy LLM API — fully OpenAI-compatible.</p>
+
+        <div id="loading" class="mt-12 text-sm" style="color:hsl(240 4% 66%)">Loading...</div>
+
+        <div id="docs-root" class="hidden mt-10 space-y-12">
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Quick Reference</h2>
+                <div id="quick-ref" class="mt-4 liquid-glass rounded-2xl p-5"></div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Endpoints</h2>
+                <div id="endpoints" class="mt-4 space-y-3"></div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Code Examples</h2>
+                <div class="mt-4">
+                    <div id="tabs" class="flex gap-1 border-b" style="border-color:hsl(0 0% 18%)"></div>
+                    <div id="code-block" class="mt-4"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        fetch('/api/docs').then(r=>r.json()).then(data=>{
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('docs-root').classList.remove('hidden');
+            renderQuickRef(data.quickReference);
+            renderEndpoints(data.endpoints);
+            renderExamples(data.examples);
+        }).catch(()=>{
+            document.getElementById('loading').textContent='Failed to load docs.';
+        });
+
+        function renderQuickRef(qr){
+            const el=document.getElementById('quick-ref');
+            el.innerHTML=Object.entries(qr).map(([k,v])=>{
+                const val=Array.isArray(v)?v.join(', '):v;
+                return `<div class="qr-row"><span style="color:hsl(240 4% 66%)">${k}</span><span class="text-white font-mono text-sm">${esc(String(val))}</span></div>`;
+            }).join('');
+        }
+
+        function renderEndpoints(endpoints){
+            const el=document.getElementById('endpoints');
+            el.innerHTML=endpoints.map(e=>{
+                const cls=e.method==='POST'?'method-post':'method-get';
+                const hdrs=e.headers?Object.entries(e.headers).map(([k,v])=>`<span class="font-mono text-xs" style="color:hsl(240 4% 66%)">${esc(k)}: ${esc(v)}</span>`).join('<br/>'):'';
+                return `<div class="endpoint-card flex items-start gap-4"><div><span class="method-badge ${cls}">${e.method}</span></div><div class="flex-1"><div class="font-mono text-sm text-white">${esc(e.path)}</div><div class="text-xs mt-1" style="color:hsl(240 4% 66%)">${esc(e.description)}</div>${hdrs?`<div class="mt-2">${hdrs}</div>`:''}</div></div>`;
+            }).join('');
+        }
+
+        function renderExamples(examples){
+            const tabs=document.getElementById('tabs');
+            const block=document.getElementById('code-block');
+            const entries=Object.entries(examples);
+            let active=entries[0][0];
+
+            function show(key){
+                active=key;
+                const ex=examples[key];
+                tabs.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===key));
+                block.innerHTML=`<pre><code>${esc(ex.code)}</code></pre>`;
+            }
+
+            tabs.innerHTML=entries.map(([key,ex])=>`<button class="tab-btn" data-tab="${key}">${esc(ex.title)}</button>`).join('');
+            tabs.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)));
+            show(active);
+        }
+
+        function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+    </script>
+</body>
+</html>
