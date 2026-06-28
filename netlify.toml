@@ -3,22 +3,16 @@
   functions = "netlify/functions"
   publish = "src/public"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/api/*"
-  status = 200
+# Serve _headers and _redirects as static files, not through the function
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
 
-[[redirects]]
-  from = "/v1/*"
-  to = "/.netlify/functions/api/v1/*"
-  status = 200
-
-[[redirects]]
-  from = "/health"
-  to = "/.netlify/functions/api/health"
-  status = 200
-
+# All routes go through the Express serverless function
+# Netlify serves static files from publish/ first, then applies redirects
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/.netlify/functions/api"
   status = 200
