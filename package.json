@@ -1,7 +1,7 @@
 {
   "name": "galaxy-llm",
   "version": "0.1.0",
-  "description": "Galaxy LLM backend — OpenAI-compatible API gateway serving the Andromeda model (NVIDIA Nemotron 3 Ultra via OpenRouter).",
+  "description": "Galaxy LLM backend — OpenAI-compatible API gateway serving multiple models (Kimi, MiniMax, GLM, DeepSeek) via NVIDIA NIM.",
   "main": "src/server.js",
   "type": "commonjs",
   "engines": {
@@ -17,9 +17,12 @@
   "keywords": [
     "llm",
     "openai",
-    "openrouter",
-    "nemotron",
-    "andromeda",
+    "nvidia",
+    "nim",
+    "kimi",
+    "minimax",
+    "glm",
+    "deepseek",
     "galaxy"
   ],
   "license": "MIT",

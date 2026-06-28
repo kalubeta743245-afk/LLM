@@ -1,9 +1,9 @@
 /**
  * LLM service
  *
- * Wraps the `openai` SDK and points it at OpenRouter (which exposes an
+ * Wraps the `openai` SDK and points it at NVIDIA NIM (which exposes an
  * OpenAI-compatible API). Handles:
- *   - client init with baseURL + apiKey + OpenRouter ranking headers
+ *   - client init with baseURL + apiKey
  *   - model aliasing (served name -> upstream id)
  *   - streaming and non-streaming chat completions
  */
@@ -11,15 +11,10 @@ const OpenAI = require('openai');
 const config = require('../config');
 const logger = require('../utils/logger');
 
-// OpenRouter is OpenAI-API compatible: just override baseURL + key, and add
-// the optional HTTP-Referer / X-Title headers they use for ranking.
+// NVIDIA NIM is OpenAI-API compatible: just override baseURL + key.
 const client = new OpenAI({
-  apiKey: config.OPENROUTER_API_KEY,
-  baseURL: config.OPENROUTER_BASE_URL,
-  defaultHeaders: {
-    'HTTP-Referer': config.APP_REFERER,
-    'X-Title': config.APP_TITLE,
-  },
+  apiKey: config.NVIDIA_NIM_API_KEY,
+  baseURL: config.NVIDIA_NIM_BASE_URL,
 });
 
 /**

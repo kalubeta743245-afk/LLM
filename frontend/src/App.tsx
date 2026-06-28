@@ -75,7 +75,7 @@ function App() {
           style={{ fontFamily: "'Instrument Serif', serif" }}
         >
           Ship smarter.{' '}
-          <em className="not-italic text-muted-foreground">Andromeda, one line away.</em>
+          <em className="not-italic text-muted-foreground">Galaxy, one line away.</em>
         </h1>
 
         <a

@@ -20,24 +20,39 @@ const optional = (name, fallback = '') => {
 };
 
 // ---- Core credentials / provider ----
-const OPENROUTER_API_KEY = required('OPENROUTER_API_KEY');
-const OPENROUTER_BASE_URL = optional(
-  'OPENROUTER_BASE_URL',
-  'https://openrouter.ai/api/v1'
+const NVIDIA_NIM_API_KEY = required('NVIDIA_NIM_API_KEY');
+const NVIDIA_NIM_BASE_URL = optional(
+  'NVIDIA_NIM_BASE_URL',
+  'https://integrate.api.nvidia.com/v1'
 );
 
 // ---- Model registry ----
-// The galaxy-themed name clients use ("meteor") maps to a real upstream model id
-// on OpenRouter. This is the only served model. If a client omits the model
-// field or sends an unknown one, "meteor" is used.
-//
+// Galaxy-themed aliases mapped to NVIDIA NIM upstream model ids.
 // Each entry: { served (alias), upstream (real id), description, fast (bool) }
 const MODEL_REGISTRY = [
   {
-    served: optional('SERVED_MODEL_NAME', 'meteor'),
-    upstream: optional('UPSTREAM_MODEL', 'cohere/north-mini-code:free'),
-    description: 'Fast low-latency coding model (Cohere North Mini Code). Best for snappy first responses.',
-    fast: true,
+    served: 'kimi',
+    upstream: 'moonshotai/kimi-k2.6',
+    description: 'Moonshot AI Kimi K2 — long-context, coding, and reasoning.',
+    fast: false,
+  },
+  {
+    served: 'minimax',
+    upstream: 'minimax/minimax-01',
+    description: 'MiniMax 01 — general-purpose language capabilities.',
+    fast: false,
+  },
+  {
+    served: 'glm',
+    upstream: 'zhipu/glm-4',
+    description: 'Zhipu GLM-4 — multilingual, coding, and instruction-tuned.',
+    fast: false,
+  },
+  {
+    served: 'deepseek',
+    upstream: 'deepseek-ai/deepseek-chat',
+    description: 'DeepSeek Chat — latest general-purpose reasoning model.',
+    fast: false,
   },
 ];
 
@@ -58,7 +73,7 @@ function servedModelIds() {
   return MODEL_REGISTRY.map((m) => m.served);
 }
 
-// ---- OpenRouter identification headers ----
+// ---- NVIDIA NIM headers ----
 const APP_TITLE = optional('APP_TITLE', 'Galaxy LLM');
 const APP_REFERER = optional('APP_REFERER', 'http://localhost:3000');
 
@@ -315,8 +330,8 @@ const UI_UX_GENERATION_PROMPT = [
 ].join('\n');
 
 module.exports = {
-  OPENROUTER_API_KEY,
-  OPENROUTER_BASE_URL,
+  NVIDIA_NIM_API_KEY,
+  NVIDIA_NIM_BASE_URL,
   UPSTREAM_MODEL,
   SERVED_MODEL_NAME,
   MODEL_REGISTRY,
