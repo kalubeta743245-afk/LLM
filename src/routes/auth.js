@@ -99,7 +99,7 @@ router.post('/api/auth/login', async (req, res, next) => {
     const foundUserId = userList.users[0].$id;
 
     // Create email/password session
-    const session = await users.createSession(foundUserId);
+    const session = await users.createSession(foundUserId, password);
     logger.info(`User logged in: ${session.userId}`);
 
     res.json({

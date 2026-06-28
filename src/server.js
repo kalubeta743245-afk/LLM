@@ -86,29 +86,29 @@ app.get('*', (req, res, next) => {
 app.use(notFound);
 app.use(errorHandler);
 
-// ---- Boot ----
-const server = app.listen(config.PORT, () => {
-  logger.info(`Galaxy LLM listening on http://localhost:${config.PORT}`);
-  logger.info(`Serving model "${config.SERVED_MODEL_NAME}" -> upstream "${config.UPSTREAM_MODEL}"`);
-  if (config.isAuthEnabled()) {
-    logger.info('Backend API-key gate is ENABLED.');
-  } else {
-    logger.info('Backend API-key gate is DISABLED (prototype mode).');
-  }
-});
-
-// ---- Graceful shutdown ----
-function shutdown(signal) {
-  logger.info(`${signal} received, shutting down...`);
-  server.close(() => {
-    logger.info('HTTP server closed.');
-    process.exit(0);
+// ---- Boot (only when run directly, not when imported by Netlify Function) ----
+if (require.main === module) {
+  const server = app.listen(config.PORT, () => {
+    logger.info(`Galaxy LLM listening on http://localhost:${config.PORT}`);
+    logger.info(`Serving model "${config.SERVED_MODEL_NAME}" -> upstream "${config.UPSTREAM_MODEL}"`);
+    if (config.isAuthEnabled()) {
+      logger.info('Backend API-key gate is ENABLED.');
+    } else {
+      logger.info('Backend API-key gate is DISABLED (prototype mode).');
+    }
   });
-  // Force-exit if connections hang.
-  setTimeout(() => process.exit(1), 10000).unref();
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+  function shutdown(signal) {
+    logger.info(`${signal} received, shutting down...`);
+    server.close(() => {
+      logger.info('HTTP server closed.');
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
 
 module.exports = app;
