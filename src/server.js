@@ -1,5 +1,5 @@
 /**
- * Galaxy LLM — server entrypoint.
+ * optimizedLLM — server entrypoint.
  *
  * Wires together Express middleware, routes, and graceful shutdown.
  * Configuration is validated on import of ./config (fails fast on missing env).
@@ -21,6 +21,7 @@ const chatRouter = require('./routes/chat');
 const authRouter = require('./routes/auth');
 const dashboardRouter = require('./routes/dashboard');
 const docsRouter = require('./routes/docs');
+const nvidiaModelsRouter = require('./routes/nvidia-models');
 
 const app = express();
 
@@ -54,7 +55,7 @@ app.all('/.well-known/*', (req, res) => res.status(404).json({
 // ---- Routes ----
 app.get('/', (req, res) => {
   res.json({
-    service: 'galaxy-llm',
+    service: 'optimized-llm',
     servedModel: config.SERVED_MODEL_NAME,
     docs: 'See README.md. Try GET /v1/models or POST /v1/chat/completions.',
   });
@@ -70,6 +71,7 @@ app.use(modelsRouter);
 app.use(authRouter);
 app.use(dashboardRouter);
 app.use(docsRouter);
+app.use(nvidiaModelsRouter);
 
 // Chat is protected by database-backed API key validation.
 app.use(apiKeyGate);
@@ -89,7 +91,7 @@ app.use(errorHandler);
 // ---- Boot (only when run directly, not when imported by Netlify Function) ----
 if (require.main === module) {
   const server = app.listen(config.PORT, () => {
-    logger.info(`Galaxy LLM listening on http://localhost:${config.PORT}`);
+    logger.info(`optimizedLLM listening on http://localhost:${config.PORT}`);
     logger.info(`Serving model "${config.SERVED_MODEL_NAME}" -> upstream "${config.UPSTREAM_MODEL}"`);
     if (config.isAuthEnabled()) {
       logger.info('Backend API-key gate is ENABLED.');

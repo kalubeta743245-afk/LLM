@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Models — optimizedLLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#003144;color:#fff;-webkit-font-smoothing:antialiased}
+        .liquid-glass{background:rgba(255,255,255,0.01);background-blend-mode:luminosity;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);position:relative;overflow:hidden}
+        .liquid-glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,0.45) 0%,rgba(255,255,255,0.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.15) 80%,rgba(255,255,255,0.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+        @keyframes fade-rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        .animate-fade-rise{animation:fade-rise .8s ease-out both}
+        .search-input{background:rgba(255,255,255,0.04);border:1px solid hsl(0 0% 18%);color:#fff;border-radius:9999px;padding:12px 20px;font-size:14px;width:100%}
+        .search-input:focus{outline:none;border-color:hsl(240 4% 66%)}
+        .search-input::placeholder{color:hsl(240 4% 66%)}
+        .model-card{transition:transform .2s ease,box-shadow .2s ease}
+        .model-card:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,0.3)}
+        .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(52,211,153,0.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(52,211,153,0.3);border-radius:9999px;padding:10px 24px;font-size:14px;color:#34d399;z-index:50;opacity:0;transition:opacity .3s ease;pointer-events:none}
+        .toast.show{opacity:1}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-black" style="background-image:url('https://source.unsplash.com/random/1920x1080/?nebula,stars,space');background-size:cover;background-blend-mode:overlay">
+    <div class="absolute inset-0 bg-black/70 -z-10"></div>
+
+    <nav class="relative z-10 mx-auto flex max-w-7xl w-full flex-row items-center justify-between px-8 py-6">
+        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">optimizedLLM<sup class="text-xs">®</sup></a>
+        <div class="flex items-center gap-4">
+            <a href="/dashboard.html" class="text-sm hover:text-white transition-colors" style="color:hsl(240 4% 66%)">Dashboard</a>
+            <a href="/docs.html" class="text-sm hover:text-white transition-colors" style="color:hsl(240 4% 66%)">Docs</a>
+            <a href="/" class="liquid-glass rounded-full px-5 py-2 text-sm text-white transition-transform hover:scale-[1.03]">Home</a>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-1 px-6 pb-16 pt-8 mx-auto w-full max-w-6xl animate-fade-rise">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div>
+                <h1 class="text-4xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Models</h1>
+                <p class="mt-2 text-sm" style="color:hsl(240 4% 66%)">Browse available NVIDIA NIM models optimized for your workflow.</p>
+            </div>
+            <div class="relative w-full sm:w-64">
+                <input id="search" type="text" placeholder="Search models..." class="search-input" />
+            </div>
+        </div>
+
+        <div id="loading-state" class="mt-16 text-center">
+            <div class="inline-block w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            <p class="mt-4 text-sm" style="color:hsl(240 4% 66%)">Loading models...</p>
+        </div>
+
+        <div id="error-state" class="hidden mt-16 text-center">
+            <p class="text-sm" style="color:#f87171">Failed to load models. Please try again.</p>
+            <button onclick="location.reload()" class="liquid-glass mt-4 rounded-full px-6 py-2.5 text-sm text-white transition-transform hover:scale-[1.03]">Retry</button>
+        </div>
+
+        <div id="empty-state" class="hidden mt-16 text-center">
+            <p class="text-sm" style="color:hsl(240 4% 66%)">No models match your search.</p>
+        </div>
+
+        <div id="models-grid" class="hidden mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let allModels = [];
+        const grid = document.getElementById('models-grid');
+        const loadingState = document.getElementById('loading-state');
+        const errorState = document.getElementById('error-state');
+        const emptyState = document.getElementById('empty-state');
+        const searchInput = document.getElementById('search');
+        const toast = document.getElementById('toast');
+
+        async function loadModels() {
+            try {
+                loadingState.classList.remove('hidden');
+                errorState.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                grid.classList.add('hidden');
+
+                const res = await fetch('/api/models');
+                if (!res.ok) throw new Error('Failed to fetch');
+                const data = await res.json();
+                allModels = data.data || [];
+
+                loadingState.classList.add('hidden');
+                if (allModels.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+                renderModels(allModels);
+                grid.classList.remove('hidden');
+            } catch (e) {
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+            }
+        }
+
+        function renderModels(models) {
+            if (models.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            grid.classList.remove('hidden');
+            grid.innerHTML = models.map(function(m) {
+                return '<div class="liquid-glass rounded-2xl p-5 model-card">' +
+                    '<div class="flex items-start justify-between gap-3">' +
+                        '<div class="flex-1 min-w-0">' +
+                            '<h3 class="text-base font-medium text-white truncate">' + esc(m.id) + '</h3>' +
+                            '<p class="text-xs mt-1.5" style="color:hsl(240 4% 66%)">' + esc(m.description || 'NVIDIA NIM model') + '</p>' +
+                        '</div>' +
+                        '<span class="shrink-0 text-xs px-2.5 py-1 rounded-full" style="background:rgba(52,211,153,0.12);color:#34d399">available</span>' +
+                    '</div>' +
+                    '<button onclick="copyModelId(\'' + escAttr(m.id) + '\')" class="liquid-glass mt-4 w-full rounded-full px-4 py-2 text-xs text-white transition-transform hover:scale-[1.02]">Use API</button>' +
+                '</div>';
+            }.bind(this));
+        }
+
+        function copyModelId(id) {
+            navigator.clipboard.writeText(id).then(function() {
+                showToast('Copied ' + id);
+            }).catch(function() {
+                showToast('Failed to copy');
+            });
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2500);
+        }
+
+        function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function escAttr(s) { return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+        searchInput.addEventListener('input', function() {
+            var q = searchInput.value.toLowerCase().trim();
+            if (!q) { renderModels(allModels); return; }
+            var filtered = allModels.filter(function(m) {
+                return m.id.toLowerCase().includes(q) || (m.description || '').toLowerCase().includes(q);
+            });
+            renderModels(filtered);
+        });
+
+        loadModels();
+    </script>
+</body>
+</html>

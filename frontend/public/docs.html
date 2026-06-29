@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Documentation — Galaxy LLM</title>
+    <title>Documentation — optimizedLLM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,16 +30,17 @@
     <div class="absolute inset-0 bg-black/60 -z-10"></div>
 
     <nav class="relative z-10 mx-auto flex max-w-7xl w-full flex-row items-center justify-between px-8 py-6">
-        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Galaxy LLM<sup class="text-xs">®</sup></a>
+        <a href="/" class="text-3xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">optimizedLLM<sup class="text-xs">®</sup></a>
         <div class="flex items-center gap-4">
             <a href="/dashboard.html" class="text-sm hover:text-white transition-colors" style="color:hsl(240 4% 66%)">Dashboard</a>
+            <a href="/models.html" class="text-sm hover:text-white transition-colors" style="color:hsl(240 4% 66%)">Models</a>
             <a href="/" class="liquid-glass rounded-full px-5 py-2 text-sm text-white transition-transform hover:scale-[1.03]">Home</a>
         </div>
     </nav>
 
     <main class="relative z-10 flex-1 px-6 pb-16 pt-4 mx-auto w-full max-w-4xl animate-fade-rise">
         <h1 class="text-4xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Documentation</h1>
-        <p class="mt-3 text-sm" style="color:hsl(240 4% 66%)">Integrate with the Galaxy LLM API — fully OpenAI-compatible.</p>
+        <p class="mt-3 text-sm" style="color:hsl(240 4% 66%)">Integrate with the optimizedLLM API — fully OpenAI-compatible.</p>
 
         <div id="loading" class="mt-12 text-sm" style="color:hsl(240 4% 66%)">Loading...</div>
 
@@ -59,6 +60,54 @@
                 <div class="mt-4">
                     <div id="tabs" class="flex gap-1 border-b" style="border-color:hsl(0 0% 18%)"></div>
                     <div id="code-block" class="mt-4"></div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">OpenAI Base URL</h2>
+                <div class="mt-4 liquid-glass rounded-2xl p-6 space-y-4">
+                    <p class="text-sm" style="color:hsl(240 4% 66%)">optimizedLLM is fully compatible with the OpenAI SDK. Just change the base URL.</p>
+                    <div>
+                        <h3 class="text-sm text-white font-medium mb-2">JavaScript (OpenAI SDK)</h3>
+                        <pre><code>import OpenAI from 'openai';
+const client = new OpenAI({
+  baseURL: 'https://optimizedllm.netlify.app/v1',
+  apiKey: 'gllm_YOUR_API_KEY_HERE',
+});
+const chat = await client.chat.completions.create({
+  model: 'moonshotai/kimi-k2.6-optimisedLLM',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});</code></pre>
+                    </div>
+                    <div>
+                        <h3 class="text-sm text-white font-medium mb-2">Python (OpenAI SDK)</h3>
+                        <pre><code>from openai import OpenAI
+client = OpenAI(
+  base_url='https://optimizedllm.netlify.app/v1',
+  api_key='gllm_YOUR_API_KEY_HERE',
+)
+chat = client.chat.completions.create(
+  model='moonshotai/kimi-k2.6-optimisedLLM',
+  messages=[{'role': 'user', 'content': 'Hello!'}],
+)</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">API Keys</h2>
+                <div class="mt-4 liquid-glass rounded-2xl p-6">
+                    <p class="text-sm" style="color:hsl(240 4% 66%)">Get your API key from the <a href="/dashboard.html" class="text-white underline">Dashboard</a>. Include it in the Authorization header.</p>
+                    <pre class="mt-3"><code>Authorization: Bearer &lt;your_api_key&gt;</code></pre>
+                </div>
+            </section>
+
+            <section>
+                <h2 class="text-2xl tracking-tight text-white" style="font-family:'Instrument Serif',serif">Models</h2>
+                <div class="mt-4 liquid-glass rounded-2xl p-6 space-y-3">
+                    <p class="text-sm" style="color:hsl(240 4% 66%)">List available models:</p>
+                    <pre><code>GET /v1/models</code></pre>
+                    <p class="text-sm" style="color:hsl(240 4% 66%)">Example model: <code class="text-white">moonshotai/kimi-k2.6-optimisedLLM</code></p>
                 </div>
             </section>
         </div>

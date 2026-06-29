@@ -2,15 +2,17 @@
  * Docs routes
  *
  * Returns API documentation and ready-to-use code examples
- * for integrating with the Galaxy LLM gateway.
+ * for integrating with the optimizedLLM gateway.
  */
 const express = require('express');
 
 const router = express.Router();
 const config = require('../config');
 
-const BASE_URL = 'https://api.galaxy-llm.dev';
+const BASE_URL = 'https://optimizedllm.netlify.app';
 const MODEL_NAME = config.SERVED_MODEL_NAME;
+const EXAMPLE_MODEL = 'moonshotai/kimi-k2.6-optimisedLLM';
+const OPENAI_BASE_URL = 'https://optimizedllm.netlify.app/v1';
 
 /**
  * GET /api/docs
@@ -18,10 +20,11 @@ const MODEL_NAME = config.SERVED_MODEL_NAME;
  */
 router.get('/api/docs', (req, res) => {
   res.json({
-    service: 'galaxy-llm',
+    service: 'optimized-llm',
     model: MODEL_NAME,
     version: '1.0.0',
     baseUrl: BASE_URL,
+    openaiBaseUrl: OPENAI_BASE_URL,
     endpoints: [
       {
         method: 'POST',
@@ -49,7 +52,7 @@ router.get('/api/docs', (req, res) => {
           `  -H "Content-Type: application/json" \\`,
           `  -H "Authorization: Bearer gllm_YOUR_KEY_HERE" \\`,
           `  -d '{`,
-          `    "model": "${MODEL_NAME}",`,
+          `    "model": "${EXAMPLE_MODEL}",`,
           `    "messages": [`,
           `      { "role": "system", "content": "You are a helpful assistant." },`,
           `      { "role": "user", "content": "Explain quantum computing in simple terms." }`,
@@ -68,7 +71,7 @@ router.get('/api/docs', (req, res) => {
           `    'Authorization': 'Bearer gllm_YOUR_KEY_HERE',`,
           `  },`,
           `  body: JSON.stringify({`,
-          `    model: '${MODEL_NAME}',`,
+          `    model: '${EXAMPLE_MODEL}',`,
           `    messages: [`,
           `      { role: 'system', content: 'You are a helpful assistant.' },`,
           `      { role: 'user', content: 'Explain quantum computing in simple terms.' }`,
@@ -91,7 +94,7 @@ router.get('/api/docs', (req, res) => {
           `    'Authorization': 'Bearer gllm_YOUR_KEY_HERE',`,
           `}`,
           `payload = {`,
-          `    'model': '${MODEL_NAME}',`,
+          `    'model': '${EXAMPLE_MODEL}',`,
           `    'messages': [`,
           `        {'role': 'system', 'content': 'You are a helpful assistant.'},`,
           `        {'role': 'user', 'content': 'Explain quantum computing in simple terms.'}`,
@@ -113,7 +116,7 @@ router.get('/api/docs', (req, res) => {
           `    'Authorization': 'Bearer gllm_YOUR_KEY_HERE',`,
           `  },`,
           `  body: JSON.stringify({`,
-          `    model: '${MODEL_NAME}',`,
+          `    model: '${EXAMPLE_MODEL}',`,
           `    stream: true,`,
           `    messages: [`,
           `      { role: 'user', content: 'Write a haiku about the moon.' }`,
@@ -134,6 +137,7 @@ router.get('/api/docs', (req, res) => {
     },
     quickReference: {
       'Base URL': BASE_URL,
+      'OpenAI Base URL': OPENAI_BASE_URL,
       'Model': MODEL_NAME,
       'Auth Header': 'Authorization: Bearer <API_KEY>',
       'MIME Type': 'application/json',

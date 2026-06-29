@@ -1,5 +1,5 @@
 /**
- * Central configuration for Galaxy LLM.
+ * Central configuration for optimizedLLM.
  *
  * Loads environment variables and exposes a single, validated `config` object.
  * Startup will fail fast if anything critical is missing.
@@ -74,7 +74,7 @@ function servedModelIds() {
 }
 
 // ---- NVIDIA NIM headers ----
-const APP_TITLE = optional('APP_TITLE', 'Galaxy LLM');
+const APP_TITLE = optional('APP_TITLE', 'optimizedLLM');
 const APP_REFERER = optional('APP_REFERER', 'http://localhost:3000');
 
 // ---- Server ----
@@ -96,7 +96,7 @@ const BACKEND_API_KEY = optional('BACKEND_API_KEY', '');
  */
 const DEFAULT_SYSTEM_PROMPT = [
   'You are Meteor, a helpful, friendly, and reliable general-purpose assistant',
-  'powered by the Galaxy LLM service.',
+  'powered by the optimizedLLM service.',
   '',
   'Guidelines:',
   '- Be clear, accurate, and concise.',

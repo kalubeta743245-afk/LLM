@@ -1,7 +1,7 @@
 {
-  "name": "galaxy-llm",
+  "name": "optimized-llm",
   "version": "0.1.0",
-  "description": "Galaxy LLM backend — OpenAI-compatible API gateway serving multiple models (Kimi, MiniMax, GLM, DeepSeek) via NVIDIA NIM.",
+  "description": "optimizedLLM — OpenAI-compatible API gateway serving multiple NVIDIA NIM models.",
   "main": "src/server.js",
   "type": "commonjs",
   "engines": {

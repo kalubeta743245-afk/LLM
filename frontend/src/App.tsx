@@ -11,20 +11,13 @@ function App() {
         src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4"
       />
 
-      {/* Hero Background */}
-      <img
-        src="/home-image.png"
-        alt=""
-        className="fixed inset-0 w-full h-full object-cover z-0 opacity-40"
-      />
-
       {/* Navigation */}
       <nav className="relative z-10 mx-auto flex max-w-7xl flex-row items-center justify-between px-8 py-6">
         <div
           className="text-3xl tracking-tight text-white"
           style={{ fontFamily: "'Instrument Serif', serif" }}
         >
-          Galaxy LLM<sup className="text-xs">®</sup>
+          optimizedLLM<sup className="text-xs">®</sup>
         </div>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -35,7 +28,7 @@ function App() {
             Home
           </a>
           <a
-            href="#"
+            href="/models.html"
             className="text-sm text-muted-foreground transition-colors hover:text-white"
           >
             Models

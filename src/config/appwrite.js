@@ -16,7 +16,7 @@ const APPWRITE_PROJECT_ID = optional('APPWRITE_PROJECT_ID');
 const APPWRITE_API_KEY = optional('APPWRITE_API_KEY');
 
 // Database & collection IDs (stable, deterministic)
-const DATABASE_ID = optional('APPWRITE_DATABASE_ID', 'galaxy-llm');
+const DATABASE_ID = optional('APPWRITE_DATABASE_ID', 'optimized-llm');
 const API_KEYS_COLLECTION_ID = optional('APPWRITE_API_KEYS_COLLECTION', 'api_keys');
 const INITIAL_CREDITS = Number(optional('INITIAL_CREDITS', '40'));
 

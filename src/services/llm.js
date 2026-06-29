@@ -11,6 +11,15 @@ const OpenAI = require('openai');
 const config = require('../config');
 const logger = require('../utils/logger');
 
+// Strip the -optimisedLLM suffix if present
+function normalizeModelId(modelId) {
+  const suffix = '-optimisedLLM';
+  if (modelId && modelId.endsWith(suffix)) {
+    return modelId.slice(0, -suffix.length);
+  }
+  return modelId;
+}
+
 // NVIDIA NIM is OpenAI-API compatible: just override baseURL + key.
 const client = new OpenAI({
   apiKey: config.NVIDIA_NIM_API_KEY,
@@ -19,14 +28,32 @@ const client = new OpenAI({
 
 /**
  * Resolve a client-supplied model alias to its registry entry.
- * Uses the served name (e.g. "andromeda", "meteor") case-insensitively and
- * falls back to the default model entry when the alias is missing/unknown.
+ * First tries served-name lookup, then tries upstream ID (with suffix stripped),
+ * then falls back to the default model entry.
  *
  * @param {string} [requestedModel]
  * @returns {{served:string, upstream:string, description:string, fast:boolean}}
  */
 function resolveModelEntry(requestedModel) {
-  return config.resolveServedModel(requestedModel);
+  const raw = (requestedModel || '').trim();
+  // Try served-name lookup first
+  const byServed = config.resolveServedModel(raw);
+  if (byServed.served.toLowerCase() === raw.toLowerCase()) {
+    return byServed;
+  }
+  // Try upstream lookup with suffix stripped
+  const normalized = normalizeModelId(raw);
+  const byUpstream = config.MODEL_REGISTRY.find(
+    (m) => m.upstream.toLowerCase() === normalized.toLowerCase()
+  );
+  if (byUpstream) return byUpstream;
+  // Fallback: use normalized model id directly
+  return {
+    served: normalized,
+    upstream: normalized,
+    description: 'NVIDIA NIM model',
+    fast: false,
+  };
 }
 
 /**
@@ -107,6 +134,7 @@ function passthrough(params) {
 
 module.exports = {
   client,
+  normalizeModelId,
   resolveUpstreamModel,
   resolveModelEntry,
   chatCompletion,

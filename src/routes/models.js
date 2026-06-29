@@ -1,9 +1,3 @@
-/**
- * GET /v1/models — lists the models this gateway serves (galaxy aliases).
- *
- * Only served names (e.g. "andromeda", "meteor") are exposed; upstream ids are
- * never revealed to clients.
- */
 const express = require('express');
 const router = express.Router();
 const config = require('../config');
@@ -12,10 +6,12 @@ router.get('/v1/models', (req, res) => {
   res.json({
     object: 'list',
     data: config.MODEL_REGISTRY.map((m) => ({
-      id: m.served,
+      id: m.upstream + '-optimisedLLM',
       object: 'model',
-      created: 0,
-      owned_by: 'galaxy-llm',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'nvidia-nim',
+      served_by: 'optimized-llm',
+      description: m.description,
     })),
   });
 });
