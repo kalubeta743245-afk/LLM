@@ -6,7 +6,7 @@
  */
 const crypto = require('crypto');
 const {
-  databases,
+  getDatabases,
   ID,
   Query,
   Permission,
@@ -32,7 +32,7 @@ function generateApiKey() {
 async function createInitialApiKey(userId) {
   const key = generateApiKey();
   await setInitialCredits(userId);
-  const doc = await databases.createDocument(
+  const doc = await getDatabases().createDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     ID.unique(),
@@ -59,7 +59,7 @@ async function createInitialApiKey(userId) {
  * List all API keys for a user.
  */
 async function listApiKeys(userId) {
-  const result = await databases.listDocuments(
+  const result = await getDatabases().listDocuments(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     [Query.equal('userId', userId), Query.orderDesc('$createdAt')]
@@ -72,7 +72,7 @@ async function listApiKeys(userId) {
  */
 async function createApiKey(userId, name = 'New Key') {
   const key = generateApiKey();
-  const doc = await databases.createDocument(
+  const doc = await getDatabases().createDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     ID.unique(),
@@ -99,7 +99,7 @@ async function createApiKey(userId, name = 'New Key') {
  * Delete an API key by document ID. Only if it belongs to the user.
  */
 async function deleteApiKey(documentId, userId) {
-  await databases.deleteDocument(DATABASE_ID, API_KEYS_COLLECTION_ID, documentId);
+  await getDatabases().deleteDocument(DATABASE_ID, API_KEYS_COLLECTION_ID, documentId);
   logger.info(`Deleted API key ${documentId} for user ${userId}`);
 }
 
@@ -108,7 +108,7 @@ async function deleteApiKey(documentId, userId) {
  * Returns null if not found or expired (credits <= 0).
  */
 async function validateApiKey(key) {
-  const result = await databases.listDocuments(
+  const result = await getDatabases().listDocuments(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     [Query.equal('key', key), Query.limit(1)]
@@ -121,13 +121,13 @@ async function validateApiKey(key) {
  * Decrement credits for an API key after a successful request.
  */
 async function decrementCredits(documentId, amount = 1) {
-  const doc = await databases.getDocument(
+  const doc = await getDatabases().getDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     documentId
   );
   const newCredits = Math.max(0, doc.credits - amount);
-  const updated = await databases.updateDocument(
+  const updated = await getDatabases().updateDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     documentId,
@@ -146,14 +146,14 @@ async function decrementCredits(documentId, amount = 1) {
  * Add credits to an API key.
  */
 async function addCredits(documentId, amount) {
-  const doc = await databases.getDocument(
+  const doc = await getDatabases().getDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     documentId
   );
   const newCredits = doc.credits + amount;
   const newTotal = (doc.totalCredits || 0) + amount;
-  return databases.updateDocument(
+  return getDatabases().updateDocument(
     DATABASE_ID,
     API_KEYS_COLLECTION_ID,
     documentId,

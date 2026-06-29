@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { users, ID } = require('../config/appwrite');
+const { getUsers, ID, Query, requireConfigured } = require('../config/appwrite');
 const { createInitialApiKey } = require('../services/api-keys');
 const { getUserCredits } = require('../services/credits');
 const logger = require('../utils/logger');
@@ -20,6 +20,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 router.post('/api/auth/register', async (req, res, next) => {
   try {
+    requireConfigured();
+
     const { email, password, name } = req.body;
 
     if (!email || !password) {
@@ -41,7 +43,7 @@ router.post('/api/auth/register', async (req, res, next) => {
     }
 
     // Create Appwrite user
-    const user = await users.create(ID.unique(), email, undefined, password, name || email.split('@')[0]);
+    const user = await getUsers().create(ID.unique(), email, undefined, password, name || email.split('@')[0]);
     logger.info(`Registered new user: ${user.$id} (${email})`);
 
     // Create initial API key with credits
@@ -74,6 +76,8 @@ router.post('/api/auth/register', async (req, res, next) => {
  */
 router.post('/api/auth/login', async (req, res, next) => {
   try {
+    requireConfigured();
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -89,8 +93,7 @@ router.post('/api/auth/login', async (req, res, next) => {
     }
 
     // Find user by email first
-    const { Query } = require('../config/appwrite');
-    const userList = await users.list([Query.equal('email', email), Query.limit(1)]);
+    const userList = await getUsers().list([Query.equal('email', email), Query.limit(1)]);
     if (userList.total === 0) {
       return res.status(401).json({
         error: { message: 'Invalid email or password.', type: 'unauthorized' },
@@ -99,7 +102,7 @@ router.post('/api/auth/login', async (req, res, next) => {
     const foundUserId = userList.users[0].$id;
 
     // Create email/password session
-    const session = await users.createSession(foundUserId, password);
+    const session = await getUsers().createSession(foundUserId, password);
     logger.info(`User logged in: ${session.userId}`);
 
     res.json({
@@ -135,13 +138,15 @@ router.post('/api/auth/login', async (req, res, next) => {
  */
 router.get('/api/auth/me', async (req, res, next) => {
   try {
+    requireConfigured();
+
     const { userId } = req.query;
     if (!userId) {
       return res.status(400).json({
         error: { message: 'userId query parameter is required.', type: 'invalid_request_error' },
       });
     }
-    const user = await users.get(userId);
+    const user = await getUsers().get(userId);
     res.json({
       user: { id: user.$id, email: user.email, name: user.name },
     });
@@ -157,6 +162,8 @@ router.get('/api/auth/me', async (req, res, next) => {
  */
 router.post('/api/auth/logout', async (req, res, next) => {
   try {
+    requireConfigured();
+
     const { userId } = req.body;
     if (!userId) {
       return res.status(400).json({
@@ -164,7 +171,7 @@ router.post('/api/auth/logout', async (req, res, next) => {
       });
     }
     // Delete all sessions for the user
-    await users.deleteSessions(userId);
+    await getUsers().deleteSessions(userId);
     logger.info(`User logged out: ${userId}`);
     res.json({ success: true });
   } catch (err) {

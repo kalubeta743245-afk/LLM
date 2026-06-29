@@ -40,10 +40,11 @@ router.get('/api/dashboard', requireUser, async (req, res, next) => {
     const userCredits = await getUserCredits(req.userId);
 
     // Get user info from Appwrite
-    const { users } = require('../config/appwrite');
+    const { getUsers, requireConfigured } = require('../config/appwrite');
+    requireConfigured();
     let userInfo = null;
     try {
-      const user = await users.get(req.userId);
+      const user = await getUsers().get(req.userId);
       userInfo = { id: user.$id, email: user.email, name: user.name };
     } catch (_) {}
 
