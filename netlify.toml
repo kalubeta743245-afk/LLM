@@ -10,7 +10,14 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
 
-# All routes go through the Express serverless function
+# API routes MUST bypass static file serving (force = true)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+# All other routes go through the Express serverless function
 # Netlify serves static files from publish/ first, then applies redirects
 [[redirects]]
   from = "/*"
