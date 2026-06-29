@@ -68,14 +68,14 @@ function App() {
           style={{ fontFamily: "'Instrument Serif', serif" }}
         >
           Ship smarter.{' '}
-          <em className="not-italic text-muted-foreground">Galaxy, one line away.</em>
+          <em className="not-italic text-muted-foreground">Get your free API key.</em>
         </h1>
 
         <a
           href="/login.html"
           className="animate-fade-rise-delay-2 liquid-glass mt-14 cursor-pointer rounded-full px-14 py-5 text-base text-white transition-transform hover:scale-[1.03]"
         >
-          Begin Journey
+          Get Free API Key
         </a>
       </section>
 
