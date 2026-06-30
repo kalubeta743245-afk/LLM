@@ -73,16 +73,18 @@ app.use(dashboardRouter);
 app.use(docsRouter);
 app.use(nvidiaModelsRouter);
 
-// Chat is protected by database-backed API key validation.
-app.use(apiKeyGate);
-app.use(chatRouter);
-
-// ---- SPA fallback (serve index.html for non-API routes) ----
+// ---- SPA fallback (serve index.html for browser routes only) ----
 app.get('*', (req, res, next) => {
+  // Skip API routes — let them fall through to 404/error handlers
+  if (req.path.startsWith('/api/') || req.path.startsWith('/v1/')) return next()
   res.sendFile('index.html', { root: 'src/public' }, (err) => {
     if (err) next();
   });
 });
+
+// Chat is protected by database-backed API key validation.
+app.use(apiKeyGate);
+app.use(chatRouter);
 
 // ---- 404 + error handling (must be last) ----
 app.use(notFound);

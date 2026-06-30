@@ -6,62 +6,61 @@ const express = require('express');
 const router = express.Router();
 const config = require('../config');
 const logger = require('../utils/logger');
+const { enrichModels } = require('../services/openrouter');
 
 router.get('/api/models', async (req, res, next) => {
   try {
     const nimBase = config.NVIDIA_NIM_BASE_URL;
     const nimKey = config.NVIDIA_NIM_API_KEY;
-    
+    let models;
+
     if (!nimKey) {
-      return res.json({
-        object: 'list',
-        data: config.MODEL_REGISTRY.map((m) => ({
-          id: m.upstream + '-optimisedLLM',
-          object: 'model',
-          created: Math.floor(Date.now() / 1000),
-          owned_by: 'nvidia-nim',
-          served_by: 'optimizedLLM',
-          description: m.description,
-        })),
-      });
-    }
-
-    const response = await fetch(`${nimBase}/models`, {
-      headers: {
-        'Authorization': `Bearer ${nimKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`NVIDIA NIM API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    const models = (data.data || []).map((m) => ({
-      id: m.id + '-optimisedLLM',
-      object: 'model',
-      created: m.created || Math.floor(Date.now() / 1000),
-      owned_by: m.owned_by || 'nvidia-nim',
-      served_by: 'optimizedLLM',
-      description: `NVIDIA NIM model — ${m.id}`,
-    }));
-
-    res.json({ object: 'list', data: models });
-  } catch (err) {
-    logger.error('NVIDIA models fetch error:', err.message);
-    res.json({
-      object: 'list',
-      data: config.MODEL_REGISTRY.map((m) => ({
+      models = config.MODEL_REGISTRY.map((m) => ({
         id: m.upstream + '-optimisedLLM',
         object: 'model',
         created: Math.floor(Date.now() / 1000),
         owned_by: 'nvidia-nim',
         served_by: 'optimizedLLM',
         description: m.description,
-      })),
-    });
+      }));
+    } else {
+      const response = await fetch(`${nimBase}/models`, {
+        headers: {
+          'Authorization': `Bearer ${nimKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`NVIDIA NIM API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      models = (data.data || []).map((m) => ({
+        id: m.id + '-optimisedLLM',
+        object: 'model',
+        created: m.created || Math.floor(Date.now() / 1000),
+        owned_by: m.owned_by || 'nvidia-nim',
+        served_by: 'optimizedLLM',
+        description: `NVIDIA NIM model — ${m.id}`,
+      }));
+    }
+
+    // Enrich with OpenRouter + HuggingFace metadata
+    models = enrichModels(models);
+
+    res.json({ object: 'list', data: models });
+  } catch (err) {
+    logger.error('NVIDIA models fetch error:', err.message);
+    const fallback = config.MODEL_REGISTRY.map((m) => ({
+      id: m.upstream + '-optimisedLLM',
+      object: 'model',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'nvidia-nim',
+      served_by: 'optimizedLLM',
+      description: m.description,
+    }));
+    res.json({ object: 'list', data: enrichModels(fallback) });
   }
 });
 

@@ -3,79 +3,98 @@
 @tailwind utilities;
 
 :root {
-  --background: 201 100% 13%;
-  --foreground: 0 0% 100%;
-  --muted-foreground: 240 4% 66%;
-  --primary: 0 0% 100%;
-  --primary-foreground: 0 0% 4%;
-  --secondary: 0 0% 10%;
-  --muted: 0 0% 10%;
-  --accent: 0 0% 10%;
-  --border: 0 0% 18%;
-  --input: 0 0% 18%;
-  --font-display: 'Instrument Serif', serif;
-  --font-body: 'Inter', sans-serif;
+  /* Neubrutalist palette */
+  --nb-cream: #FAF7F0;
+  --nb-white: #FFFFFF;
+  --nb-black: #0A0A0A;
+  --nb-yellow: #FFD23F;
+  --nb-pink: #FF6B9D;
+  --nb-lime: #C5E063;
+  --nb-blue: #4A90E2;
+  --nb-purple: #B8A1FF;
+  --nb-orange: #FF8C42;
+  --nb-gray: #E8E4DC;
+  --nb-muted: #6B6B6B;
+
+  /* shadcn/ui CSS variables */
+  --background: #FAF7F0;
+  --foreground: #0A0A0A;
+  --card: #FFFFFF;
+  --card-foreground: #0A0A0A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0A0A;
+  --primary: #FFD23F;
+  --primary-foreground: #0A0A0A;
+  --secondary: #FF6B9D;
+  --secondary-foreground: #0A0A0A;
+  --muted: #E8E4DC;
+  --muted-foreground: #6B6B6B;
+  --accent: #C5E063;
+  --accent-foreground: #0A0A0A;
+  --destructive: #FF6B9D;
+  --destructive-foreground: #FFFFFF;
+  --border: #0A0A0A;
+  --input: #0A0A0A;
+  --ring: #FFD23F;
+  --radius: 0rem;
+
+  --font-display: 'Archivo Black', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
 }
 
-body {
-  font-family: var(--font-body);
-  background-color: #003144;
-  color: #ffffff;
+* {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-.liquid-glass {
-  background: rgba(255, 255, 255, 0.01);
-  background-blend-mode: luminosity;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border: none;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  position: relative;
-  overflow: hidden;
+html {
+  scroll-behavior: smooth;
 }
 
-.liquid-glass::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.4px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 255, 255, 0.15) 20%,
-    rgba(255, 255, 255, 0) 40%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.15) 80%,
-    rgba(255, 255, 255, 0.45) 100%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+body {
+  font-family: var(--font-body);
+  background-color: var(--nb-cream);
+  color: var(--nb-black);
 }
 
-@keyframes fade-rise {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
+::selection {
+  background: var(--nb-yellow);
+  color: var(--nb-black);
+}
+
+/* === Neubrutalist Utilities === */
+.nb-grid-bg {
+  background-image:
+    linear-gradient(var(--nb-black) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nb-black) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  opacity: 0.05;
+}
+
+@keyframes nb-pop {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.nb-animate {
+  animation: nb-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nb-animate-delay-1 { animation-delay: 0.08s; }
+.nb-animate-delay-2 { animation-delay: 0.16s; }
+.nb-animate-delay-3 { animation-delay: 0.24s; }
+.nb-animate-delay-4 { animation-delay: 0.32s; }
+
+/* Tailwind v3 custom theme extensions */
+@layer utilities {
+  .shadow-nb {
+    box-shadow: 6px 6px 0 var(--nb-black);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .shadow-nb-sm {
+    box-shadow: 4px 4px 0 var(--nb-black);
   }
-}
-
-.animate-fade-rise {
-  animation: fade-rise 0.8s ease-out both;
-}
-
-.animate-fade-rise-delay {
-  animation: fade-rise 0.8s ease-out 0.2s both;
-}
-
-.animate-fade-rise-delay-2 {
-  animation: fade-rise 0.8s ease-out 0.4s both;
+  .shadow-nb-lg {
+    box-shadow: 8px 8px 0 var(--nb-black);
+  }
 }

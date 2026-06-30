@@ -4,43 +4,39 @@ export default {
   content: [
     './index.html',
     './src/**/*.{ts,tsx,js,jsx}',
+    './public/**/*.html',
   ],
   theme: {
     extend: {
       colors: {
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
-        'muted-foreground': 'hsl(var(--muted-foreground))',
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
-        },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-        },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-        },
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
+        'nb-cream': '#FAF7F0',
+        'nb-yellow': '#FFD23F',
+        'nb-pink': '#FF6B9D',
+        'nb-lime': '#C5E063',
+        'nb-blue': '#4A90E2',
+        'nb-purple': '#B8A1FF',
+        'nb-orange': '#FF8C42',
+        'nb-gray': '#E8E4DC',
+        'nb-muted': '#6B6B6B',
+        'nb-black': '#0A0A0A',
+        'nb-white': '#FFFFFF',
       },
       fontFamily: {
-        display: ["'Instrument Serif'", 'serif'],
-        body: ["'Inter'", 'sans-serif'],
+        display: ['"Archivo Black"', 'system-ui', 'sans-serif'],
+        body: ['"Inter"', 'system-ui', 'sans-serif'],
       },
-      animation: {
-        'fade-rise': 'fade-rise 0.8s ease-out both',
-        'fade-rise-delay': 'fade-rise 0.8s ease-out 0.2s both',
-        'fade-rise-delay-2': 'fade-rise 0.8s ease-out 0.4s both',
+      boxShadow: {
+        'nb': '6px 6px 0 #0A0A0A',
+        'nb-sm': '4px 4px 0 #0A0A0A',
+        'nb-lg': '8px 8px 0 #0A0A0A',
+        'nb-xl': '12px 12px 0 #0A0A0A',
       },
-      keyframes: {
-        'fade-rise': {
-          from: { opacity: '0', transform: 'translateY(24px)' },
-          to: { opacity: '1', transform: 'translateY(0)' },
-        },
+      borderWidth: {
+        'nb': '3px',
+        'nb-thin': '2px',
+      },
+      borderRadius: {
+        'none': '0',
       },
     },
   },
