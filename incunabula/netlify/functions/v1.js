@@ -21,6 +21,26 @@ function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 }
 
+// Cached model index (same 5-min TTL as the /v1/models cache) so chat-time
+// alias resolution doesn't fan out to every provider per request.
+async function getModelIndex() {
+  const CACHE_TTL = 5 * 60 * 1000;
+  try {
+    const cached = await storeGet('v1-model-index', null);
+    if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && cached.byName) {
+      const byModel = new Map(Object.entries(cached.byName).map(([k, v]) => [k, new Set(v)]));
+      return { byModel };
+    }
+  } catch { /* build fresh */ }
+  const { byModel } = await collectModels();
+  try {
+    const plain = {};
+    for (const [k, set] of byModel) plain[k] = [...set];
+    await storeSet('v1-model-index', { at: Date.now(), byName: plain }).catch(() => {});
+  } catch { /* cache optional */ }
+  return { byModel };
+}
+
 // Fetch every provider's model list once. Returns the ordered entries plus a
 // modelName -> Set(providerId) index used for alias disambiguation.
 async function collectModels() {
@@ -186,7 +206,7 @@ exports.handler = async (event) => {
     if (slash === -1) {
       // Bare name. Exact match wins first (so real names ending in digits
       // still work), then "<model>-N" aliases for duplicated names.
-      const { byModel } = await collectModels();
+      const { byModel } = await getModelIndex();
       const direct = [...(byModel.get(full) || [])].sort();
       if (direct.length === 1) {
         providerId = direct[0];
@@ -208,8 +228,23 @@ exports.handler = async (event) => {
       if (!model) return err(400, 'model must look like "<providerId>/<model>"');
     }
     const providers = await getAllProviders();
-    const provider = providers.find((p) => p.id === providerId);
-    if (!provider) return err(404, 'Unknown provider: ' + providerId);
+    let provider = providers.find((p) => p.id === providerId);
+    if (!provider) {
+      // Unknown prefix: third-party clients send the raw upstream id
+      // ("z-ai/glm-5.3-flash-free"). Search every catalogue for the FULL
+      // string and route to its owner — like other OpenAI-compatible bases.
+      const { byModel } = await getModelIndex();
+      const owners = [...(byModel.get(full) || [])].sort();
+      if (owners.length === 1) {
+        providerId = owners[0];
+        model = full;
+        provider = providers.find((p) => p.id === providerId);
+      } else if (owners.length > 1) {
+        return err(400, 'Ambiguous model "' + full + '" — use one of: ' + owners.map((pid) => pid + '/' + full).join(', '));
+      } else {
+        return err(404, 'Unknown provider: ' + providerId);
+      }
+    }
     if (provider.localBridge || provider.noAuth) {
       if (body.stream) return err(400, 'Streaming is not supported for provider "' + providerId + '" — use stream:false');
     } else if (body.stream) {
