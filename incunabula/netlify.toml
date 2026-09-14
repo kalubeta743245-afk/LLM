@@ -1,0 +1,27 @@
+[build]
+  functions = "netlify/functions"
+  publish = "public"
+  command = "echo 'static build — functions bundled by Netlify'"
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD"
+    Access-Control-Max-Age = "86400"
+    Access-Control-Expose-Headers = "*"
+
+# API routes go to the serverless functions (all Firebase/OpenAI-compatible proxies)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+# Incunabula as an OpenAI-compatible gateway: /v1/* served by the v1 function
+[[redirects]]
+  from = "/v1/*"
+  to = "/.netlify/functions/v1"
+  status = 200
+  force = true

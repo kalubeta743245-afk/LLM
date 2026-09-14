@@ -1,0 +1,114 @@
+// Incunabula visitor bridge — run YOUR free models on YOUR pc.
+// No install: needs only Node.js 18+ and the opencode CLI (npm i -g opencode-ai).
+//
+//   1. Save this file anywhere, then run:  node bridge.js
+//   2. Keep it running, open the Incunabula site in your browser.
+//   3. The "My Site Free" card automatically uses YOUR pc (badge shows "your pc").
+//
+// Nothing is uploaded: prompts run through your local opencode CLI only.
+// Stop it any time with Ctrl+C. Listens on http://127.0.0.1:8899 (loopback only).
+const http = require('http');
+const { spawn } = require('child_process');
+
+const PORT = 8899;
+const ZEN = 'https://opencode.ai/zen/v1';
+let cache = { t: 0, ids: [] };
+let busy = false;
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+async function zenFree() {
+  if (Date.now() - cache.t < 300000 && cache.ids.length) return cache.ids;
+  const r = await fetch(ZEN + '/models', { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error('free list unreachable: HTTP ' + r.status);
+  const d = await r.json();
+  const ids = ((d.data || []).map((m) => m.id) || []).filter((id) => /free|pickle/i.test(id));
+  if (!ids.length && !cache.ids.length) throw new Error('no free models right now');
+  if (ids.length) cache = { t: Date.now(), ids };
+  return ids.length ? ids : cache.ids;
+}
+
+function cliBin() {
+  if (process.platform !== 'win32') return 'opencode';
+  const path = require('path');
+  const fs = require('fs');
+  const exe = path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe');
+  try { fs.accessSync(exe, fs.constants.X_OK); return exe; } catch { return 'opencode.cmd'; }
+}
+
+function cliChat(modelId, prompt) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(cliBin(), ['run', '--model', 'opencode/' + modelId, prompt], { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      const x = new Error('opencode CLI not found — install: npm i -g opencode-ai');
+      x.status = 501;
+      return reject(x);
+    }
+    let out = '', err = '';
+    const t = setTimeout(() => { try { child.kill(); } catch {} const x = new Error('free run timed out'); x.status = 504; reject(x); }, 150000);
+    child.stdout.on('data', (d) => { out += d; if (out.length > 1048576) { try { child.kill(); } catch {} } });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', () => { clearTimeout(t); const x = new Error('opencode CLI not found — install: npm i -g opencode-ai'); x.status = 501; reject(x); });
+    child.on('close', (code) => {
+      clearTimeout(t);
+      if (code !== 0) { const x = new Error('free run failed: ' + String(out + err).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 200)); x.status = 502; return reject(x); }
+      resolve(String(out).replace(/\x1b\[[0-9;]*m/g, '').split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('>')).join('\n').trim() || '(empty)');
+    });
+  });
+}
+
+function readBody(req) {
+  return new Promise((resolve) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1:' + PORT);
+  if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
+  const send = (code, obj) => { res.writeHead(code, { ...CORS, 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+
+  if (url.pathname === '/ping' && req.method === 'GET') {
+    let cli = false;
+    try { await new Promise((ok, no) => { const c = spawn(cliBin(), ['--version'], { stdio: ['ignore', 'ignore', 'ignore'] }); c.on('error', no); c.on('close', (code) => (code === 0 ? ok() : no())); setTimeout(no, 8000); }); cli = true; } catch { cli = false; }
+    return send(200, { ok: true, bridge: true, cli });
+  }
+
+  const fn = (url.pathname.match(/^\/(?:api|(?:\.netlify\/functions))\/(.+)$/) || [])[1];
+  if (!fn || !['models', 'chat'].includes(fn) || req.method !== 'POST') return send(404, { error: 'use POST /api/models or POST /api/chat' });
+  let body = {};
+  try { body = JSON.parse(await readBody(req) || '{}'); } catch { return send(400, { ok: false, error: 'Bad request' }); }
+  if (body.providerId && body.providerId !== 'mysitefree') return send(400, { ok: false, error: 'bridge serves mysitefree only' });
+
+  try {
+    if (fn === 'models') {
+      const started = Date.now();
+      const ids = await zenFree();
+      return send(200, { ok: true, provider: 'My Site Free', count: ids.length, ms: Date.now() - started, models: ids, via: 'your pc' });
+    }
+    const ids = await zenFree();
+    const fid = String(body.model || '').replace(/^opencode\//, '');
+    if (!body.model || !ids.includes(fid)) return send(400, { ok: false, error: 'Unknown model: ' + (body.model || '') });
+    if (busy) return send(429, { ok: false, error: 'busy, retry in a minute' });
+    busy = true;
+    const started = Date.now();
+    try {
+      const msgs = body.messages || [];
+      const last = [...msgs].reverse().find((m) => m.role === 'user');
+      const c = last && last.content;
+      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || '').join('') : '';
+      const content = await cliChat(fid, (text || 'ping').slice(0, 4000));
+      return send(200, { ok: true, model: fid, ms: Date.now() - started, content, reasoning: null, finishReason: 'stop', usage: null, id: null, via: 'your pc' });
+    } finally { busy = false; }
+  } catch (e) {
+    return send(e.status || 500, { ok: false, error: e.message || 'Request failed' });
+  }
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+  console.log('Incunabula bridge on http://127.0.0.1:' + PORT + ' — open the site and use My Site Free.');
+});

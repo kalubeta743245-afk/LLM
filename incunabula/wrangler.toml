@@ -1,0 +1,17 @@
+# Incunabula — Cloudflare Worker (same app as Netlify/local).
+# Static: ./public served from edge. API: bundled netlify/functions.
+name = "ai"
+main = "worker/index.js"
+compatibility_date = "2025-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "MODELLAB_KV"
+id = "51ffb6751cb048fcb72bad15816bb342"
+
+[vars]
+BRIDGE_URL = "https://project-italiano-expansys-forge.trycloudflare.com"

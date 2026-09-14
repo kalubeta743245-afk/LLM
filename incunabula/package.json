@@ -1,0 +1,11 @@
+{
+  "name": "model-lab",
+  "version": "1.0.0",
+  "description": "Minimalist glassmorphism UI to inspect env keys and test OpenAI-compatible LLM models via Netlify Functions.",
+  "private": true,
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@netlify/blobs": "^11.0.3",
+    "openai": "^4.104.0"
+  }
+}

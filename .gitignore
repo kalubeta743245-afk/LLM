@@ -1,3 +1,31 @@
-*
-!.env
-!.gitignore
+# Dependencies
+node_modules/
+
+# Environment / secrets - NEVER commit real keys
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Local data / runtime state
+.data/
+
+# Cloudflare / Netlify local state
+.wrangler/
+.netlify/
+
+# Temp / OS / editor
+Temp/
+tmp/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/
