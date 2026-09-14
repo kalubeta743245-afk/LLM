@@ -266,35 +266,69 @@ exports.handler = async (event) => {
     };
     const modelFailed = (status, msg) => isModelError(status, msg && (msg.message || msg));
 
-    // CLI-backed free tier can't pipe (no OpenAI endpoint) — keep its adapter.
-    if (provider.localBridge) {
-      const r = await chatFn({
-        httpMethod: 'POST', headers: {},
-        body: JSON.stringify({ ...body, providerId, model }),
-      });
-      const d = JSON.parse(r.body || '{}');
-      if (r.statusCode !== 200 || d.ok === false) {
+    // Candidate upstream targets, tried in order until one stops failing
+    // with a model error:
+    //   1. stripped id at the named provider ("pid/rest" -> model "rest")
+    //   2. full id at the named provider (catalogues with nested ids like
+    //      "orcarouter/free" — this is what the site cards send, verbatim)
+    //   3. same/closest id at any other provider (cross-provider fallback)
+    const candidates = [{ provider, model }];
+    if (!provider.localBridge && full !== model) {
+      candidates.push({ provider, model: full });
+    }
+    let alternatesLoaded = false;
+
+    let lastErr = null;
+    let ci = 0;
+    while (true) {
+      // Lazily append the cross-provider alternate only after the direct
+      // candidates fail, so the hot path never pays for the index lookup.
+      if (ci >= candidates.length) {
+        if (alternatesLoaded) break;
+        alternatesLoaded = true;
+        const { byModel } = await getModelIndex();
+        const alt = findAlternateModel(model, providerId, byModel);
+        if (alt) {
+          const altProvider = providers.find((p) => p.id === alt.providerId);
+          if (altProvider && !altProvider.localBridge) candidates.push({ provider: altProvider, model: alt.model });
+        }
+        if (ci >= candidates.length) break;
+      }
+      const cand = candidates[ci++];
+      // CLI-backed free tier can't pipe (no OpenAI endpoint) — adapter instead.
+      if (cand.provider.localBridge) {
+        const r = await chatFn({
+          httpMethod: 'POST', headers: {},
+          body: JSON.stringify({ ...body, providerId: cand.provider.id, model: cand.model }),
+        });
+        const d = JSON.parse(r.body || '{}');
+        if (r.statusCode === 200 && d.ok !== false) {
+          touchKey();
+          return {
+            statusCode: 200,
+            headers: cors(event.headers),
+            body: JSON.stringify({
+              id: d.id || ('chatcmpl-' + Date.now().toString(36)),
+              object: 'chat.completion',
+              created: Math.floor(Date.now() / 1000),
+              model: full,
+              choices: [{ index: 0, message: { role: 'assistant', content: d.content || '' }, finish_reason: d.finishReason || 'stop' }],
+              usage: d.usage || undefined,
+            }),
+          };
+        }
         if (!modelFailed(r.statusCode, d.error)) {
           return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
         }
-      } else {
-        touchKey();
-        return {
-          statusCode: 200,
-          headers: cors(event.headers),
-          body: JSON.stringify({
-            id: d.id || ('chatcmpl-' + Date.now().toString(36)),
-            object: 'chat.completion',
-            created: Math.floor(Date.now() / 1000),
-            model: full,
-            choices: [{ index: 0, message: { role: 'assistant', content: d.content || '' }, finish_reason: d.finishReason || 'stop' }],
-            usage: d.usage || undefined,
-          }),
-        };
+        lastErr = { status: r.statusCode, msg: d.error };
+        continue;
       }
-    } else {
+      if (body.stream && cand.provider.noAuth) {
+        lastErr = { status: 400, msg: 'Streaming is not supported for provider "' + cand.provider.id + '"' };
+        continue;
+      }
       try {
-        const out = await pipeOnce(provider, model);
+        const out = await pipeOnce(cand.provider, cand.model);
         if (out.stream) return out;
         if (out.statusCode >= 200 && out.statusCode < 300) return out;
         let msg = '';
@@ -302,30 +336,19 @@ exports.handler = async (event) => {
         if (!modelFailed(out.statusCode, msg)) {
           return { statusCode: out.statusCode, body: out.body, headers: cors(event.headers) };
         }
+        lastErr = { status: out.statusCode, msg };
       } catch (e) {
         if (!modelFailed(e.status, e.message)) throw e;
+        lastErr = { status: (e && e.status) || 500, msg: (e && e.message) || '' };
       }
     }
-    // The id failed at its provider: find the same/closest id elsewhere and
-    // pipe once more, so SDK clients get an answer instead of a 404.
-    const { byModel } = await getModelIndex();
-    const alt = findAlternateModel(model, providerId, byModel);
-    if (!alt) {
+    if (lastErr && lastErr.status === 404) {
       return err(404, 'Model "' + full + '" not available on any provider right now');
     }
-    const altProvider = providers.find((p) => p.id === alt.providerId);
-    if (!altProvider || altProvider.localBridge) {
-      return err(404, 'Model "' + full + '" not available on any provider right now');
-    }
-    if (body.stream && altProvider.noAuth) {
-      return err(400, 'Streaming is not supported for provider "' + alt.providerId + '" — use stream:false');
-    }
-    try {
-      return await pipeOnce(altProvider, alt.model);
-    } catch (e) {
-      const status = (e && e.status) || 500;
-      return err(status, (e && e.message) || 'Upstream request failed');
-    }
+    return err(
+      (lastErr && lastErr.status === 200 ? 500 : (lastErr && lastErr.status)) || 500,
+      (lastErr && (lastErr.msg && (lastErr.msg.message || lastErr.msg))) || 'Upstream request failed'
+    );
   }
   return err(404, 'Use GET /v1/models or POST /v1/chat/completions');
 };
