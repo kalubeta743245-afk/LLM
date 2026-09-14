@@ -30,10 +30,12 @@ function corsHeaders(request) {
   };
 }
 
-function toEvent(request, body, path) {
+function toEvent(request, body, path, ctx) {
   const headers = {};
   request.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-  return { httpMethod: request.method, headers, body, path };
+  const ev = { httpMethod: request.method, headers, body, path };
+  if (ctx) ev._ctx = ctx; // waitUntil for non-blocking background work
+  return ev;
 }
 
 function json(statusCode, body, extraHeaders, request) {
@@ -43,10 +45,10 @@ function json(statusCode, body, extraHeaders, request) {
   });
 }
 
-async function runFn(fn, request, path) {
+async function runFn(fn, request, path, ctx) {
   const body = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method) ? await request.text() : '';
   try {
-    const result = await fn(toEvent(request, body, path));
+    const result = await fn(toEvent(request, body, path, ctx));
     // SSE streaming envelope: pipe the ReadableStream straight through.
     if (result && result.stream && typeof result.stream.getReader === 'function') {
       return new Response(result.stream, {
@@ -69,7 +71,7 @@ async function runFn(fn, request, path) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // Expose bindings to the shared function code (same contract as before).
     // Provider secrets override hardcoded keys (see secretFor in _shared.js).
     try {
@@ -90,7 +92,7 @@ export default {
 
     // OpenAI gateway: /v1/models, /v1/chat/completions
     if (url.pathname === '/v1' || url.pathname.startsWith('/v1/')) {
-      return runFn(FNS.v1, request, url.pathname);
+      return runFn(FNS.v1, request, url.pathname, ctx);
     }
 
     const apiMatch =
@@ -99,7 +101,7 @@ export default {
     if (apiMatch && ['POST', 'GET', 'PUT', 'DELETE', 'PATCH', 'HEAD'].includes(request.method)) {
       const fn = FNS[apiMatch[1]];
       if (!fn) return json(404, JSON.stringify({ error: 'Unknown function' }), null, request);
-      return runFn(fn, request, url.pathname);
+      return runFn(fn, request, url.pathname, ctx);
     }
 
     // Static files (public/). Never cache HTML shell so F5 stays fresh.

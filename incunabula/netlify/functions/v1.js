@@ -220,13 +220,20 @@ exports.handler = async (event) => {
     // (only the model id is swapped for the resolved upstream id) and hand
     // back the provider's own status + body untouched. No reshaping — every
     // provider here already speaks OpenAI.
-    const touchKey = async () => {
+    // Usage tracking never blocks the hot path (waitUntil when available).
+    const touchKey = () => {
       if (!keyEntry) return;
+      const p = (async () => {
+        try {
+          keyEntry.lastUsed = Date.now();
+          const keys = await storeGet('api-keys', []);
+          await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+        } catch { /* usage tracking never breaks a call */ }
+      })();
       try {
-        keyEntry.lastUsed = Date.now();
-        const keys = await storeGet('api-keys', []);
-        await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
-      } catch { /* usage tracking never breaks a call */ }
+        if (event._ctx && typeof event._ctx.waitUntil === 'function') event._ctx.waitUntil(p.catch(() => {}));
+        else p.catch(() => {});
+      } catch { /* ignore */ }
     };
     const pipeOnce = async (prov, upstreamModel) => {
       const { url, headers } = providerFetch(prov);
@@ -250,11 +257,11 @@ exports.handler = async (event) => {
           e.status = upstream.status;
           throw e;
         }
-        await touchKey();
+        touchKey();
         return { statusCode: 200, stream: upstream.body, headers: cors(event.headers) };
       }
       const text = await upstream.text().catch(() => '');
-      await touchKey();
+      touchKey();
       return { statusCode: upstream.status, body: text, headers: cors(event.headers) };
     };
     const modelFailed = (status, msg) => isModelError(status, msg && (msg.message || msg));
@@ -271,7 +278,7 @@ exports.handler = async (event) => {
           return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
         }
       } else {
-        await touchKey();
+        touchKey();
         return {
           statusCode: 200,
           headers: cors(event.headers),
