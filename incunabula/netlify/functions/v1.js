@@ -115,83 +115,6 @@ async function collectModels() {
   return { entries, byModel };
 }
 
-// SSE streaming relay: forwards the client's full body upstream with
-// stream:true and pipes chunks back, rewriting only the model id to the
-// gateway id. Tool-call deltas, usage chunks and [DONE] pass through
-// untouched. Returns an envelope both adapters understand
-// ({statusCode, stream, headers}).
-async function streamRelay(event, provider, full, model, body) {
-  const { url, headers } = providerFetch(provider);
-  let upstream;
-  try {
-    upstream = await fetch(url, {
-      method: 'POST', headers,
-      body: JSON.stringify({ ...body, model, stream: true }),
-    });
-  } catch (e) {
-    const err2 = new Error('Upstream unreachable: ' + (e.message || e));
-    err2.status = 502;
-    throw err2;
-  }
-  if (!upstream.ok || !upstream.body) {
-    const t = await upstream.text().catch(() => '');
-    let msg = 'HTTP ' + upstream.status;
-    try { const j = JSON.parse(t); msg = (j.error && (j.error.message || j.error)) || msg; } catch { /* raw */ }
-    const e = new Error(String(msg).slice(0, 300));
-    e.status = upstream.status;
-    throw e;
-  }
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buf = '';
-  const stream = new ReadableStream({
-    async pull(controller) {
-      while (true) {
-        const nl = buf.indexOf('\n');
-        if (nl !== -1) {
-          let line = buf.slice(0, nl);
-          buf = buf.slice(nl + 1);
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          const trimmed = line.trim();
-          if (!trimmed) { controller.enqueue(encoder.encode('\n')); return; }
-          if (trimmed.startsWith('data:')) {
-            const payload = trimmed.slice(5).trim();
-            if (payload === '[DONE]') { controller.enqueue(encoder.encode('data: [DONE]\n\n')); return; }
-            try {
-              const chunk = JSON.parse(payload);
-              if (chunk && typeof chunk === 'object' && 'model' in chunk) chunk.model = full;
-              controller.enqueue(encoder.encode('data: ' + JSON.stringify(chunk) + '\n\n'));
-            } catch {
-              controller.enqueue(encoder.encode(line + '\n'));
-            }
-          } else {
-            controller.enqueue(encoder.encode(line + '\n'));
-          }
-          return;
-        }
-        const { done, value } = await reader.read();
-        if (done) {
-          if (buf.trim()) {
-            const rest = buf; buf = '';
-            controller.enqueue(encoder.encode(rest.endsWith('\n') ? rest : rest + '\n'));
-            return;
-          }
-          controller.close();
-          return;
-        }
-        buf += decoder.decode(value, { stream: true });
-      }
-    },
-    cancel() { try { reader.cancel(); } catch { /* ignore */ } },
-  });
-  return {
-    statusCode: 200,
-    stream,
-    headers: cors(event.headers),
-  };
-}
-
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors(event.headers) };
   const path = (event.path || '').replace(/\/+$/, '') || '/v1';
@@ -293,38 +216,62 @@ exports.handler = async (event) => {
         return err(404, 'Unknown provider: ' + providerId);
       }
     }
-    const callOnce = async (pid, m) => {
-      if (body.stream) return { streamed: await streamRelay(event, providers.find((p) => p.id === pid), full, m, body) };
-      const rr = await chatFn({
-        httpMethod: 'POST', headers: {},
-        body: JSON.stringify({ ...body, providerId: pid, model: m }),
-      });
-      return { r: rr, d: JSON.parse(rr.body || '{}') };
+    // Thin pipe: forward the client's body verbatim to the real provider
+    // (only the model id is swapped for the resolved upstream id) and hand
+    // back the provider's own status + body untouched. No reshaping — every
+    // provider here already speaks OpenAI.
+    const touchKey = async () => {
+      if (!keyEntry) return;
+      try {
+        keyEntry.lastUsed = Date.now();
+        const keys = await storeGet('api-keys', []);
+        await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+      } catch { /* usage tracking never breaks a call */ }
+    };
+    const pipeOnce = async (prov, upstreamModel) => {
+      const { url, headers } = providerFetch(prov);
+      let upstream;
+      try {
+        upstream = await fetch(url, {
+          method: 'POST', headers,
+          body: JSON.stringify({ ...body, model: upstreamModel }),
+        });
+      } catch (e) {
+        const err2 = new Error('Upstream unreachable: ' + (e.message || e));
+        err2.status = 502;
+        throw err2;
+      }
+      if (body.stream) {
+        if (!upstream.ok || !upstream.body) {
+          const t = await upstream.text().catch(() => '');
+          let msg = 'HTTP ' + upstream.status;
+          try { const j = JSON.parse(t); msg = (j.error && (j.error.message || j.error)) || msg; } catch { /* raw */ }
+          const e = new Error(String(msg).slice(0, 300));
+          e.status = upstream.status;
+          throw e;
+        }
+        await touchKey();
+        return { statusCode: 200, stream: upstream.body, headers: cors(event.headers) };
+      }
+      const text = await upstream.text().catch(() => '');
+      await touchKey();
+      return { statusCode: upstream.status, body: text, headers: cors(event.headers) };
     };
     const modelFailed = (status, msg) => isModelError(status, msg && (msg.message || msg));
 
-    if (provider.localBridge || provider.noAuth) {
-      if (body.stream) return err(400, 'Streaming is not supported for provider "' + providerId + '" — use stream:false');
-    } else if (body.stream) {
-      try {
-        return (await callOnce(providerId, model)).streamed;
-      } catch (e) {
-        if (!modelFailed(e.status, e.message)) throw e;
-      }
-    } else {
-      const { r, d } = await callOnce(providerId, model);
-      if (r.statusCode === 200 && d.ok !== false) {
-        if (keyEntry) {
-          keyEntry.lastUsed = Date.now();
-          const keys = await storeGet('api-keys', []);
-          await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+    // CLI-backed free tier can't pipe (no OpenAI endpoint) — keep its adapter.
+    if (provider.localBridge) {
+      const r = await chatFn({
+        httpMethod: 'POST', headers: {},
+        body: JSON.stringify({ ...body, providerId, model }),
+      });
+      const d = JSON.parse(r.body || '{}');
+      if (r.statusCode !== 200 || d.ok === false) {
+        if (!modelFailed(r.statusCode, d.error)) {
+          return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
         }
-        // Prefer the raw upstream completion (keeps tool_calls, logprobs, usage…).
-        if (d.completion && typeof d.completion === 'object') {
-          const out = { ...d.completion, model: full };
-          if (!out.usage && d.usage) out.usage = d.usage;
-          return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify(out) };
-        }
+      } else {
+        await touchKey();
         return {
           statusCode: 200,
           headers: cors(event.headers),
@@ -338,55 +285,40 @@ exports.handler = async (event) => {
           }),
         };
       }
-      if (!modelFailed(r.statusCode, d.error)) {
-        return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
+    } else {
+      try {
+        const out = await pipeOnce(provider, model);
+        if (out.stream) return out;
+        if (out.statusCode >= 200 && out.statusCode < 300) return out;
+        let msg = '';
+        try { const j = JSON.parse(out.body || '{}'); msg = (j.error && (j.error.message || j.error)) || ''; } catch { /* raw */ }
+        if (!modelFailed(out.statusCode, msg)) {
+          return { statusCode: out.statusCode, body: out.body, headers: cors(event.headers) };
+        }
+      } catch (e) {
+        if (!modelFailed(e.status, e.message)) throw e;
       }
     }
     // The id failed at its provider: find the same/closest id elsewhere and
-    // retry once, so SDK clients get an answer instead of a 404.
+    // pipe once more, so SDK clients get an answer instead of a 404.
     const { byModel } = await getModelIndex();
     const alt = findAlternateModel(model, providerId, byModel);
     if (!alt) {
       return err(404, 'Model "' + full + '" not available on any provider right now');
     }
     const altProvider = providers.find((p) => p.id === alt.providerId);
-    if (!altProvider || altProvider.localBridge || altProvider.noAuth) {
+    if (!altProvider || altProvider.localBridge) {
       return err(404, 'Model "' + full + '" not available on any provider right now');
     }
-    const resolvedId = alt.providerId + '/' + alt.model;
-    if (body.stream) {
-      return streamRelay(event, altProvider, resolvedId, alt.model, body);
+    if (body.stream && altProvider.noAuth) {
+      return err(400, 'Streaming is not supported for provider "' + alt.providerId + '" — use stream:false');
     }
-    const r2 = await chatFn({
-      httpMethod: 'POST', headers: {},
-      body: JSON.stringify({ ...body, providerId: alt.providerId, model: alt.model }),
-    });
-    const d2 = JSON.parse(r2.body || '{}');
-    if (r2.statusCode !== 200 || d2.ok === false) {
-      return err(r2.statusCode === 200 ? 500 : r2.statusCode, d2.error || 'Upstream request failed');
+    try {
+      return await pipeOnce(altProvider, alt.model);
+    } catch (e) {
+      const status = (e && e.status) || 500;
+      return err(status, (e && e.message) || 'Upstream request failed');
     }
-    if (keyEntry) {
-      keyEntry.lastUsed = Date.now();
-      const keys = await storeGet('api-keys', []);
-      await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
-    }
-    if (d2.completion && typeof d2.completion === 'object') {
-      const out = { ...d2.completion, model: resolvedId };
-      if (!out.usage && d2.usage) out.usage = d2.usage;
-      return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify(out) };
-    }
-    return {
-      statusCode: 200,
-      headers: cors(event.headers),
-      body: JSON.stringify({
-        id: d2.id || ('chatcmpl-' + Date.now().toString(36)),
-        object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000),
-        model: resolvedId,
-        choices: [{ index: 0, message: { role: 'assistant', content: d2.content || '' }, finish_reason: d2.finishReason || 'stop' }],
-        usage: d2.usage || undefined,
-      }),
-    };
   }
   return err(404, 'Use GET /v1/models or POST /v1/chat/completions');
 };

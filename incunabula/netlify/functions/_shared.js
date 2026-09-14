@@ -84,10 +84,13 @@ function makeClient(provider) {
   return new OPENAI({ apiKey: secretFor(provider.id) || provider.apiKey, baseURL: provider.baseURL, defaultHeaders: provider.defaultHeaders, timeout: 20000, maxRetries: 1 });
 }
 
-// Raw request parts for endpoints the SDK client doesn't cover (e.g. SSE
-// streaming relay). Same auth + headers as makeClient.
+// Raw request parts for the thin gateway pipe. Same auth + headers as
+// makeClient. No key -> no Authorization header at all (some keyless
+// endpoints reject even an empty Bearer).
 function providerFetch(provider) {
-  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${secretFor(provider.id) || provider.apiKey || ''}` };
+  const key = secretFor(provider.id) || provider.apiKey || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
   if (provider.defaultHeaders) Object.assign(headers, provider.defaultHeaders);
   return { url: provider.baseURL + '/chat/completions', headers };
 }
