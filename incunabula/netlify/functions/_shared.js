@@ -188,4 +188,4 @@ async function getAllProviders() {
   })));
 }
 
-module.exports = { OPENAI, PROVIDERS, makeClient, cors, storeGet, storeSet, getAllProviders };
+module.exports = { OPENAI, PROVIDERS, makeClient, cors, storeGet, storeSet, getAllProviders, secretFor };

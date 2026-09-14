@@ -1,7 +1,6 @@
 # Incunabula — Cloudflare Worker (same app as Netlify/local).
 # Static: ./public served from edge. API: bundled netlify/functions.
 name = "ai"
-account_id = "82c9984e7a80323c6c781dc9f99eff0d"
 main = "worker/index.js"
 compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]

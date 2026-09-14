@@ -296,16 +296,16 @@ function buildCard(p) {
   const kr = el('div', 'key-row');
   kr.appendChild(el('span', 'key-lbl', 'Key'));
   if (p.custom && p.apiKey) {
+    // Custom key stays server-side; show masked value only, never copyable.
     kr.appendChild(el('span', 'key-val', mask(p.apiKey)));
-    const kb = el('button', 'copy-btn', 'copy');
-    kb.onclick = () => copy(p.apiKey, kb);
-    kr.appendChild(kb);
   } else if (p.custom) {
     kr.appendChild(el('span', 'key-val', 'no key — free'));
   } else if (p.noAuth) {
     kr.appendChild(el('span', 'key-val', 'no key needed — free'));
   } else {
     // Built-in providers: keys live in Cloudflare secrets, never in the UI.
+    // After password unlock, revealServerKeys() upgrades this row.
+    kr.id = 'key-row-' + p.id;
     kr.appendChild(el('span', 'key-val', 'managed by server'));
   }
 
@@ -458,7 +458,7 @@ function openEditDialog(p) {
   const err = document.getElementById('prov-err');
 
   title.textContent = 'Edit provider';
-  sub.textContent = 'Update this shared provider for all visitors.';
+  if (sub) sub.textContent = 'Update this shared provider for all visitors.';
   nameI.value = p.name;
   baseI.value = p.baseURL;
   keyI.value = p.apiKey || '';
@@ -545,71 +545,42 @@ function timeAgo(ts) {
 function wireKeys() {
   const dlg = document.getElementById('keys-dialog');
   const err = document.getElementById('keys-err');
-  const nameI = document.getElementById('keys-name');
-  const newWrap = document.getElementById('keys-new-wrap');
-  const newI = document.getElementById('keys-new');
-  const list = document.getElementById('keys-list');
-  document.getElementById('keys-base').textContent = location.origin + '/v1';
+  const baseI = document.getElementById('keys-base-val');
+  const keyI = document.getElementById('keys-key-val');
+  let keyId = null;
 
-  async function refresh() {
-    err.textContent = '';
-    list.innerHTML = '';
-    try {
-      const d = await keysCall('list');
-      if (!d.keys.length) { list.appendChild(el('div', 'key-empty', 'No keys yet — create one above.')); return; }
-      for (const k of d.keys) {
-        const row = el('div', 'key-item');
-        row.appendChild(el('span', 'nm', k.name));
-        row.appendChild(el('span', 'kv', k.keyMasked));
-        row.appendChild(el('span', 'used', timeAgo(k.lastUsed)));
-        const del = el('button', 'icon-btn');
-        del.innerHTML = ICON_TRASH;
-        del.title = 'Revoke key';
-        del.style.cssText = 'width:28px;height:28px;color:var(--red)';
-        del.onclick = async () => {
-          try { const r = await keysCall('revoke', { id: k.id }); renderList(r.keys); }
-          catch (e) { err.textContent = e.message; }
-        };
-        row.appendChild(del);
-        list.appendChild(row);
-      }
-    } catch (e) { err.textContent = e.message; }
-  }
-  function renderList(keys) {
-    list.innerHTML = '';
-    if (!keys.length) { list.appendChild(el('div', 'key-empty', 'No keys yet — create one above.')); return; }
-    for (const k of keys) {
-      const row = el('div', 'key-item');
-      row.appendChild(el('span', 'nm', k.name));
-      row.appendChild(el('span', 'kv', k.keyMasked));
-      row.appendChild(el('span', 'used', timeAgo(k.lastUsed)));
-      const del = el('button', 'icon-btn');
-      del.innerHTML = ICON_TRASH;
-      del.title = 'Revoke key';
-      del.style.cssText = 'width:28px;height:28px;color:var(--red)';
-      del.onclick = async () => {
-        try { const r = await keysCall('revoke', { id: k.id }); renderList(r.keys); }
-        catch (e) { err.textContent = e.message; }
-      };
-      row.appendChild(del);
-      list.appendChild(row);
-    }
+  function show(k) {
+    keyId = k ? k.id : null;
+    keyI.value = k ? k.key : '';
   }
 
-  document.getElementById('keys-btn').onclick = () => { newWrap.style.display = 'none'; refresh(); dlg.showModal(); };
-  document.getElementById('keys-close').onclick = () => dlg.close();
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
-  document.getElementById('keys-copy').onclick = () => copy(newI.value, document.getElementById('keys-copy'));
-  document.getElementById('keys-create').onclick = async () => {
+  async function load() {
     err.textContent = '';
     try {
-      const d = await keysCall('create', { name: nameI.value.trim() || 'cli' });
-      nameI.value = '';
-      newI.value = d.key;
-      newWrap.style.display = '';
-      refresh();
+      const d = await keysCall('ensure');
+      show(d.key);
+    } catch (e) { err.textContent = e.message; show(null); }
+  }
+
+  document.getElementById('keys-btn').onclick = () => {
+    baseI.value = location.origin + '/v1';
+    load();
+    dlg.showModal();
+  };
+  document.getElementById('keys-base-copy').onclick = (e) => copy(baseI.value, e.target);
+  document.getElementById('keys-key-copy').onclick = (e) => copy(keyI.value, e.target);
+  document.getElementById('keys-key-del').onclick = async () => {
+    if (!keyId) return;
+    err.textContent = '';
+    try {
+      const r = await keysCall('revoke', { id: keyId });
+      // Deleting the prebuilt key auto-creates a fresh one.
+      if (r.newKey) show(r.newKey);
+      else load();
     } catch (e) { err.textContent = e.message; }
   };
+  document.getElementById('keys-close').onclick = () => dlg.close();
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 
 function wireDialog() {
@@ -623,8 +594,8 @@ function wireDialog() {
   const sub = dlg.querySelector('.dlg-sub');
 
   function reset() {
-    title.textContent = 'Add shared provider';
-    sub.textContent = 'Visible to every visitor. Any OpenAI-compatible endpoint.';
+    title.textContent = 'Add provider';
+    if (sub) sub.textContent = '';
     err.textContent = '';
     nameI.value = ''; baseI.value = ''; keyI.value = '';
     saveBtn.disabled = false; saveBtn.textContent = 'Add provider';
@@ -647,6 +618,7 @@ function wireDialog() {
     saveBtn.disabled = true; saveBtn.textContent = 'Adding…';
     try {
       await callFn('custom-providers', { name, baseURL, apiKey: keyI.value.trim() });
+      try { await keysCall('ensure'); } catch { /* gateway key already exists */ }
       saveBtn.textContent = 'Added ✓';
       setTimeout(() => location.reload(), 400);
     } catch (ex) {
@@ -658,9 +630,32 @@ function wireDialog() {
 }
 
 let uiBuilt = false;
+let serverKeys = null; // provider keys from Cloudflare secrets, password-gated
 function unlock() {
   document.getElementById('lock').classList.add('hidden');
   if (!uiBuilt) { uiBuilt = true; buildUI(); }
+  revealServerKeys();
+}
+
+// After correct password: fetch live provider keys from secrets and upgrade
+// the "managed by server" rows to masked value + copy button.
+async function revealServerKeys() {
+  try {
+    const d = await keysCall('provider-keys');
+    if (!d || !d.keys) return;
+    serverKeys = d.keys;
+    for (const [pid, key] of Object.entries(serverKeys)) {
+      if (!key) continue;
+      const row = document.getElementById('key-row-' + pid);
+      if (!row) continue;
+      row.innerHTML = '';
+      row.appendChild(el('span', 'key-lbl', 'Key'));
+      row.appendChild(el('span', 'key-val', mask(key)));
+      const kb = el('button', 'copy-btn', 'copy');
+      kb.onclick = () => copy(key, kb);
+      row.appendChild(kb);
+    }
+  } catch { /* stay masked */ }
 }
 
 async function initGate() {

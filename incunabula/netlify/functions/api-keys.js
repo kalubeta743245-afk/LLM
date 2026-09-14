@@ -1,4 +1,4 @@
-const { cors, storeGet, storeSet } = require('./_shared');
+const { cors, storeGet, storeSet, PROVIDERS, secretFor } = require('./_shared');
 const { checkPassword } = require('./auth');
 
 function newKey() {
@@ -33,12 +33,41 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, keys: keys.map(pub) }) };
   }
 
+  if (action === 'ensure') {
+    // Single prebuilt gateway key: return it (full value, password-gated),
+    // creating it first if none exists.
+    let keys = await storeGet('api-keys', []);
+    if (!keys.length) {
+      const entry = { id: 'key-' + Date.now().toString(36), name: 'Default', key: newKey(), createdAt: Date.now(), lastUsed: 0 };
+      keys.push(entry);
+      await storeSet('api-keys', keys);
+    }
+    return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, key: keys[0] }) };
+  }
+
   if (action === 'revoke') {
     const keys = await storeGet('api-keys', []);
     const kept = keys.filter((k) => k.id !== body.id);
     if (kept.length === keys.length) return { statusCode: 404, headers: cors(), body: JSON.stringify({ ok: false, error: 'Key not found' }) };
     await storeSet('api-keys', kept);
-    return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, keys: kept.map(pub) }) };
+    // Deleting the prebuilt key auto-creates a fresh one.
+    let newKeyEntry = null;
+    if (!kept.length) {
+      newKeyEntry = { id: 'key-' + Date.now().toString(36), name: 'Default', key: newKey(), createdAt: Date.now(), lastUsed: 0 };
+      await storeSet('api-keys', [newKeyEntry]);
+    }
+    return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, keys: kept.map(pub), newKey: newKeyEntry }) };
+  }
+
+  if (action === 'provider-keys') {
+    // Password already verified above. Returns live provider keys from
+    // Cloudflare secrets so the (password-gated) UI can show + copy them.
+    const keys = {};
+    for (const p of PROVIDERS) {
+      if (p.noAuth || p.localBridge) continue;
+      keys[p.id] = secretFor(p.id) || p.apiKey || '';
+    }
+    return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, keys }) };
   }
 
   return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: 'Unknown action' }) };
