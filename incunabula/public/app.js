@@ -531,6 +531,7 @@ function buildUI() {
   }).catch(() => {});
   wireDialog();
   wireKeys();
+  wireAll();
 }
 
 /* ─── API keys dialog (Incunabula as an OpenAI gateway) ─── */
@@ -580,6 +581,77 @@ function wireKeys() {
     } catch (e) { err.textContent = e.message; }
   };
   document.getElementById('keys-close').onclick = () => dlg.close();
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+}
+
+/* ─── All providers dialog (copy base URLs + keys for every provider) ─── */
+function wireAll() {
+  const dlg = document.getElementById('all-dialog');
+  const list = document.getElementById('all-list');
+  const err = document.getElementById('all-err');
+  const copyAllBtn = document.getElementById('all-copy');
+  if (!dlg || !list) return;
+  let cache = { universal_base: '', providers: [] };
+  const blockFor = (p) => '# ' + (p.name || p.id || 'provider') + '\nBASE_URL=' + (p.baseURL || '') + '\nAPI_KEY=' + (p.key || '(none)');
+
+  function render(providers) {
+    list.innerHTML = '';
+    if (!providers.length) {
+      const empty = el('div', null, 'No providers found.');
+      empty.style.cssText = 'font-size:13px;color:var(--muted)';
+      list.appendChild(empty);
+      return;
+    }
+    providers.forEach((p) => {
+      const row = el('div');
+      row.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--surface-2)';
+      const top = el('div');
+      top.style.cssText = 'display:flex;align-items:center;gap:8px';
+      const nameEl = el('span', null, p.name || p.id || 'provider');
+      nameEl.style.cssText = 'font-weight:700;font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      nameEl.title = p.name || p.id || '';
+      const cb = el('button', 'copy-btn', 'copy');
+      cb.onclick = () => copy(blockFor(p), cb);
+      top.append(nameEl, cb);
+      const baseEl = el('div', null, p.baseURL || '');
+      baseEl.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px';
+      baseEl.title = p.baseURL || '';
+      const keyEl = el('div', null, p.key ? mask(p.key) : '(none)');
+      keyEl.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px;word-break:break-all';
+      row.append(top, baseEl, keyEl);
+      list.appendChild(row);
+    });
+  }
+
+  async function load() {
+    err.textContent = '';
+    list.innerHTML = '<div style="font-size:13px;color:var(--muted)">' + esc('Loading…') + '</div>';
+    try {
+      const d = await keysCall('provider-keys');
+      cache.universal_base = d.universal_base || '';
+      cache.providers = d.providers || [];
+      render(cache.providers);
+    } catch (e) {
+      list.innerHTML = '';
+      err.textContent = e.message;
+    }
+  }
+
+  document.getElementById('allprov-btn').onclick = () => {
+    load(); // fetch live on EVERY open, never cached
+    dlg.showModal();
+  };
+  copyAllBtn.onclick = async () => {
+    err.textContent = '';
+    try {
+      const k = await keysCall('ensure');
+      const universalKey = (k && k.key && k.key.key) ? k.key.key : '';
+      const blocks = cache.providers.map(blockFor);
+      const text = 'UNIVERSAL_BASE=' + (cache.universal_base || '') + '\nUNIVERSAL_KEY=' + (universalKey || '') + (blocks.length ? '\n\n' + blocks.join('\n\n') : '');
+      copy(text, copyAllBtn);
+    } catch (ex) { err.textContent = ex.message; }
+  };
+  document.getElementById('all-close').onclick = () => dlg.close();
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 

@@ -63,11 +63,31 @@ exports.handler = async (event) => {
     // Password already verified above. Returns live provider keys from
     // Cloudflare secrets so the (password-gated) UI can show + copy them.
     const keys = {};
+    const providers = [];
     for (const p of PROVIDERS) {
       if (p.noAuth || p.localBridge) continue;
-      keys[p.id] = secretFor(p.id) || p.apiKey || '';
+      const key = secretFor(p.id) || p.apiKey || '';
+      keys[p.id] = key;
+      providers.push({ id: p.id, name: p.name, baseURL: p.baseURL, key, custom: false });
     }
-    return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, keys }) };
+    const customs = await storeGet('custom-providers', []);
+    for (const c of (customs || [])) {
+      const key = c.apiKey || '';
+      providers.push({ id: c.id, name: c.name, baseURL: c.baseURL, key, custom: true });
+    }
+    // The worker passes the original path but not the origin; recover it from
+    // the request headers so the frontend can call this gateway directly.
+    const h = event.headers || {};
+    const getHeader = (name) => {
+      const needle = name.toLowerCase();
+      const hit = Object.keys(h).find((k) => k.toLowerCase() === needle);
+      return hit ? h[hit] : undefined;
+    };
+    const host = getHeader('host');
+    const base = host ? (getHeader('x-forwarded-proto') || 'https') + '://' + host + '/v1' : undefined;
+    const payload = { ok: true, providers, keys };
+    if (base) payload.universal_base = base;
+    return { statusCode: 200, headers: cors(), body: JSON.stringify(payload) };
   }
 
   return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: 'Unknown action' }) };

@@ -151,7 +151,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   .icon-btn{min-width:42px;min-height:42px}
   .mobile-menu{min-width:42px;min-height:42px}
   .card-body .input,.card-body .select{font-size:16px}
-  dialog{top:auto;left:0;right:0;bottom:0;margin:0;width:100%;max-width:100%;border-radius:12px 12px 0 0;max-height:88vh;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
+   dialog{top:auto;left:0;right:0;bottom:0;margin:0;width:100%;max-width:100%;border-radius:12px 12px 0 0;max-height:88vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none;animation:none} }
 </style>
@@ -170,6 +170,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <div class="sidebar-foot">
       <span class="dot"></span><span>OpenAI-compatible</span>
       <a href="/bridge.js" download="bridge.js" style="margin-left:auto;font-size:11px;color:var(--accent);text-decoration:none;white-space:nowrap" title="Run free models on YOUR pc: install Node + opencode CLI, then run: node bridge.js">↓ bridge.js</a>
+      <a href="https://github.com/kalubeta743245-afk/LLM" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;white-space:nowrap" title="View source on GitHub">source</a>
     </div>
   </aside>
   <main class="main">
@@ -181,6 +182,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         </button>
         <span class="visit-pill" id="visits">0 visitors</span>
         <button class="btn btn-ghost" id="keys-btn">API keys</button>
+        <button class="btn btn-ghost" id="allprov-btn">All providers</button>
         <button class="btn btn-primary" id="add-prov-btn">+ Add provider</button>
       </div>
     </div>
@@ -231,6 +233,18 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <button class="btn btn-ghost" id="keys-close" style="flex:1;justify-content:center">Close</button>
   </div>
 </dialog>
+<dialog id="all-dialog">
+  <div class="dlg-title">All providers</div>
+  <div class="dlg-sub">Copy base URLs + keys for every provider. Fetched live on every open.</div>
+  <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+    <button class="btn btn-ghost" id="all-copy" style="flex:1;justify-content:center">Copy all</button>
+  </div>
+  <div id="all-list" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto"></div>
+  <div class="dlg-err" id="all-err"></div>
+  <div class="btn-row">
+    <button class="btn btn-ghost" id="all-close" style="flex:1;justify-content:center">Close</button>
+  </div>
+</dialog>
 <div class="lock" id="lock">
   <div class="lock-box">
     <div class="lock-icon">
@@ -246,6 +260,6 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   </div>
 </div>
 
-<script src="app.js?v=42"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>
