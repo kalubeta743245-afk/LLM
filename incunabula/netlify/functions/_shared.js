@@ -55,6 +55,14 @@ const PROVIDERS = [
     apiKey: '',
   },
   {
+    id: 'experientiallab',
+    name: 'Experiential Labs',
+    tag: 'XL',
+    color: '#6366f1',
+    baseURL: 'https://api.experientiallabs.ai/v1',
+    apiKey: '',
+  },
+  {
     id: 'orcarouter',
     name: 'OrcaRouter',
     tag: 'OC',
@@ -102,6 +110,7 @@ function secretFor(id) {
     orcarouter: 'ORCAROUTER_API_KEY',
     tokenharbor: 'TOKENHARBOR_API_KEY',
     tokenforge: 'TOKENFORGE_API_KEY',
+    experientiallab: 'EXPERIENTIALLAB_API_KEY',
     opencode: 'ZEN_KEY',
   };
   const name = map[id];

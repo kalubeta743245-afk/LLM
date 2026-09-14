@@ -5,6 +5,7 @@ const PROVIDERS = [
   { id:'openrouter', name:'OpenRouter', color:'#8b5cf6', baseURL:'https://openrouter.ai/api/v1', defaultModel:'openai/gpt-4o-mini', icon:'https://openrouter.ai/brand/v2/openrouter-glyph-light.svg', builtIn:true },
   { id:'tokenharbor', name:'Token Harbor', color:'#f97316', baseURL:'https://tokenharbor.ai/v1', defaultModel:'deepseek-v4-flash', icon:'', builtIn:true },
   { id:'tokenforge', name:'Token Forge', color:'#ef4444', baseURL:'https://tokenforge.ai.studio/v1', defaultModel:'claude-opus-5', icon:'', builtIn:true },
+  { id:'experientiallab', name:'Experiential Labs', color:'#6366f1', baseURL:'https://api.experientiallabs.ai/v1', defaultModel:'deepseek-v4-flash', icon:'', builtIn:true },
   { id:'orcarouter', name:'OrcaRouter', color:'#2e7cf6', baseURL:'https://www.orcarouter.ai/v1', defaultModel:'orcarouter/free', icon:'https://www.orcarouter.ai/orca-logo.png', builtIn:true },
   { id:'opencode', name:'OpenCode Zen', color:'#000000', baseURL:'https://opencode.ai/zen/v1', defaultModel:'gpt-5-nano', icon:'https://opencode.ai/favicon.ico', builtIn:true },
 ];
