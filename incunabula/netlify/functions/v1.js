@@ -21,8 +21,56 @@ function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 }
 
-// Cached model index (same 5-min TTL as the /v1/models cache) so chat-time
-// alias resolution doesn't fan out to every provider per request.
+// Forgiving model resolution: when "provider/model" fails upstream, find the
+// same (or closest) model id under any other provider and retry there, so
+// third-party SDK clients never have to guess our exact catalogue strings.
+function normModel(s) {
+  return String(s || '').toLowerCase().replace(/:(free|batch)$/, '').replace(/-(free|latest)$/, '');
+}
+function findAlternateModel(model, excludePid, byModel) {
+  // byModel is a Map(name -> Set(providerId)).
+  const get = (name) => [...(byModel.get(name) || [])].filter((p) => p !== excludePid).sort();
+  const names = [...byModel.keys()];
+  // 1. Exact id under another provider.
+  const exact = get(model);
+  if (exact.length) return { providerId: exact[0], model };
+  const norm = normModel(model);
+  // 2. Same id modulo :free/-free/-latest suffixes.
+  for (const name of names) {
+    if (normModel(name) !== norm) continue;
+    const owners = get(name);
+    if (owners.length) return { providerId: owners[0], model: name };
+  }
+  // 3. Provider-prefix added/removed (nested "nvidia/..." catalogue ids).
+  const allPids = new Set();
+  for (const provs of byModel.values()) for (const p of provs) allPids.add(p);
+  for (const pid of [...allPids].sort()) {
+    const withPrefix = pid + '/' + model;
+    if ((byModel.get(withPrefix) || new Set()).has(pid) && pid !== excludePid) {
+      return { providerId: pid, model: withPrefix };
+    }
+    if (model.startsWith(pid + '/')) {
+      const stripped = model.slice(pid.length + 1);
+      const owners = get(stripped);
+      if (owners.length) return { providerId: owners[0], model: stripped };
+    }
+  }
+  // 4. Closest contains-match (longest catalogue name containing the request or vice versa).
+  let best = null;
+  for (const name of names) {
+    const n = normModel(name);
+    if (n === norm || n.includes(norm) || norm.includes(n)) {
+      const owners = get(name);
+      if (!owners.length) continue;
+      if (!best || name.length > best.model.length) best = { providerId: owners[0], model: name };
+    }
+  }
+  return best;
+}
+function isModelError(status, msg) {
+  if (status === 404 || status === 410) return true; // not found / gone upstream
+  return /unknown model|not found|no such model|does not exist|invalid model|model_not_found/i.test(String(msg || ''));
+}
 async function getModelIndex() {
   const CACHE_TTL = 5 * 60 * 1000;
   try {
@@ -245,42 +293,100 @@ exports.handler = async (event) => {
         return err(404, 'Unknown provider: ' + providerId);
       }
     }
+    const callOnce = async (pid, m) => {
+      if (body.stream) return { streamed: await streamRelay(event, providers.find((p) => p.id === pid), full, m, body) };
+      const rr = await chatFn({
+        httpMethod: 'POST', headers: {},
+        body: JSON.stringify({ ...body, providerId: pid, model: m }),
+      });
+      return { r: rr, d: JSON.parse(rr.body || '{}') };
+    };
+    const modelFailed = (status, msg) => isModelError(status, msg && (msg.message || msg));
+
     if (provider.localBridge || provider.noAuth) {
       if (body.stream) return err(400, 'Streaming is not supported for provider "' + providerId + '" — use stream:false');
     } else if (body.stream) {
-      return streamRelay(event, provider, full, model, body);
+      try {
+        return (await callOnce(providerId, model)).streamed;
+      } catch (e) {
+        if (!modelFailed(e.status, e.message)) throw e;
+      }
+    } else {
+      const { r, d } = await callOnce(providerId, model);
+      if (r.statusCode === 200 && d.ok !== false) {
+        if (keyEntry) {
+          keyEntry.lastUsed = Date.now();
+          const keys = await storeGet('api-keys', []);
+          await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+        }
+        // Prefer the raw upstream completion (keeps tool_calls, logprobs, usage…).
+        if (d.completion && typeof d.completion === 'object') {
+          const out = { ...d.completion, model: full };
+          if (!out.usage && d.usage) out.usage = d.usage;
+          return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify(out) };
+        }
+        return {
+          statusCode: 200,
+          headers: cors(event.headers),
+          body: JSON.stringify({
+            id: d.id || ('chatcmpl-' + Date.now().toString(36)),
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: full,
+            choices: [{ index: 0, message: { role: 'assistant', content: d.content || '' }, finish_reason: d.finishReason || 'stop' }],
+            usage: d.usage || undefined,
+          }),
+        };
+      }
+      if (!modelFailed(r.statusCode, d.error)) {
+        return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
+      }
     }
-    // Forward the client's full body (tools, response_format, penalties,
-    // seed, reasoning_effort, …) — chat.js passes everything through.
-    const r = await chatFn({
+    // The id failed at its provider: find the same/closest id elsewhere and
+    // retry once, so SDK clients get an answer instead of a 404.
+    const { byModel } = await getModelIndex();
+    const alt = findAlternateModel(model, providerId, byModel);
+    if (!alt) {
+      return err(404, 'Model "' + full + '" not available on any provider right now');
+    }
+    const altProvider = providers.find((p) => p.id === alt.providerId);
+    if (!altProvider || altProvider.localBridge || altProvider.noAuth) {
+      return err(404, 'Model "' + full + '" not available on any provider right now');
+    }
+    const resolvedId = alt.providerId + '/' + alt.model;
+    if (body.stream) {
+      return streamRelay(event, altProvider, resolvedId, alt.model, body);
+    }
+    const r2 = await chatFn({
       httpMethod: 'POST', headers: {},
-      body: JSON.stringify({ ...body, providerId, model }),
+      body: JSON.stringify({ ...body, providerId: alt.providerId, model: alt.model }),
     });
-    const d = JSON.parse(r.body || '{}');
-    if (r.statusCode !== 200 || d.ok === false) return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
+    const d2 = JSON.parse(r2.body || '{}');
+    if (r2.statusCode !== 200 || d2.ok === false) {
+      return err(r2.statusCode === 200 ? 500 : r2.statusCode, d2.error || 'Upstream request failed');
+    }
     if (keyEntry) {
       keyEntry.lastUsed = Date.now();
       const keys = await storeGet('api-keys', []);
       await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
     }
-    // Prefer the raw upstream completion (keeps tool_calls, logprobs, usage…).
-    if (d.completion && typeof d.completion === 'object') {
-      const out = { ...d.completion, model: full };
-      if (!out.usage && d.usage) out.usage = d.usage;
+    if (d2.completion && typeof d2.completion === 'object') {
+      const out = { ...d2.completion, model: resolvedId };
+      if (!out.usage && d2.usage) out.usage = d2.usage;
       return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify(out) };
     }
     return {
-      statusCode: 200, headers: cors(event.headers),
+      statusCode: 200,
+      headers: cors(event.headers),
       body: JSON.stringify({
-        id: d.id || ('chatcmpl-' + Date.now().toString(36)),
+        id: d2.id || ('chatcmpl-' + Date.now().toString(36)),
         object: 'chat.completion',
         created: Math.floor(Date.now() / 1000),
-        model: full,
-        choices: [{ index: 0, message: { role: 'assistant', content: d.content || '' }, finish_reason: d.finishReason || 'stop' }],
-        usage: d.usage || undefined,
+        model: resolvedId,
+        choices: [{ index: 0, message: { role: 'assistant', content: d2.content || '' }, finish_reason: d2.finishReason || 'stop' }],
+        usage: d2.usage || undefined,
       }),
     };
   }
-
   return err(404, 'Use GET /v1/models or POST /v1/chat/completions');
 };
