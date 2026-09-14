@@ -78,6 +78,13 @@ function makeClient(provider) {
 
 // Worker secrets (wrangler secret put) override hardcoded keys, so a key can
 // be rotated without redeploying. Maps provider id -> secret name.
+// Known model ids per provider, merged with the live /models list so a
+// provider's catalogue stays visible even when its list endpoint is down.
+const STATIC_MODELS = {
+  tokenforge: ['claude-opus-5', 'glm-5.2', 'deepseek-v4', 'kimi-k3'],
+  tokenharbor: ['th-orchestra', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k3', 'glm-5.3', 'claude-opus-5'],
+};
+
 function secretFor(id) {
   const map = {
     openrouter: 'OPENROUTER_API_KEY',
@@ -188,4 +195,4 @@ async function getAllProviders() {
   })));
 }
 
-module.exports = { OPENAI, PROVIDERS, makeClient, cors, storeGet, storeSet, getAllProviders, secretFor };
+module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, cors, storeGet, storeSet, getAllProviders, secretFor };

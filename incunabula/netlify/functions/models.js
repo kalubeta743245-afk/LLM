@@ -1,4 +1,4 @@
-const { PROVIDERS, makeClient, cors, getAllProviders } = require('./_shared');
+const { PROVIDERS, STATIC_MODELS, makeClient, cors, getAllProviders } = require('./_shared');
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors() };
@@ -48,6 +48,15 @@ exports.handler = async (event) => {
       ids = models.data.map((m) => m.id).sort((a, b) => a.localeCompare(b));
     }
     const ms = Date.now() - started;
+
+    // Merge known catalogue ids so the list stays complete even when the
+    // provider's live endpoint is down or paginated.
+    const statics = (STATIC_MODELS && STATIC_MODELS[provider.id]) || [];
+    if (statics.length) {
+      const seen = new Set(ids);
+      for (const m of statics) if (!seen.has(m)) { seen.add(m); ids.push(m); }
+      ids.sort((a, b) => a.localeCompare(b));
+    }
 
     return {
       statusCode: 200,
