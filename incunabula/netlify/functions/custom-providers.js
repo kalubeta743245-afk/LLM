@@ -22,7 +22,7 @@ exports.handler = async (event) => {
       const before = list.length;
       list = list.filter((c) => c.id !== id);
       if (list.length === before) throw new Error('Provider not found');
-      await storeSet('custom-providers', list);
+      await storeSet('custom-providers', list); await storeSet('v1-models-cache', null).catch(() => {});
       return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, providers: publicView(list) }) };
     } catch (e) {
       return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: e.message || 'Bad request' }) };
@@ -46,7 +46,7 @@ exports.handler = async (event) => {
       }
       if (apiKey !== undefined) list[idx].apiKey = String(apiKey).trim();
       list[idx].updatedAt = Date.now();
-      await storeSet('custom-providers', list);
+      await storeSet('custom-providers', list); await storeSet('v1-models-cache', null).catch(() => {});
       return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, providers: publicView(list) }) };
     } catch (e) {
       return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: e.message || 'Bad request' }) };
@@ -67,7 +67,7 @@ exports.handler = async (event) => {
         logoUrl: String(logoUrl || '').trim().slice(0, 300),
       };
       list.push(entry);
-      await storeSet('custom-providers', list);
+      await storeSet('custom-providers', list); await storeSet('v1-models-cache', null).catch(() => {});
       return { statusCode: 200, headers: cors(), body: JSON.stringify({ ok: true, providers: publicView(list) }) };
     } catch (e) {
       return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: e.message || 'Bad request' }) };

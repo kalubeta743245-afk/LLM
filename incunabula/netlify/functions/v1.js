@@ -133,6 +133,20 @@ exports.handler = async (event) => {
   const keyEntry = await findKey(event).catch(() => null);
 
   if (event.httpMethod === 'GET' && (path === '/v1/models' || path === '/v1')) {
+    // Fast path: serve the cached catalogue (5-min TTL in KV). Building it
+    // fans out to every provider and can take 10s+ cold.
+    const CACHE_TTL = 5 * 60 * 1000;
+    try {
+      const cached = await storeGet('v1-models-cache', null);
+      if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && Array.isArray(cached.data) && cached.data.length) {
+        if (keyEntry) {
+          keyEntry.lastUsed = Date.now();
+          const keys = await storeGet('api-keys', []);
+          await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+        }
+        return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'HIT' }, body: JSON.stringify({ object: 'list', data: cached.data }) };
+      }
+    } catch { /* build fresh */ }
     const { entries, byModel } = await collectModels();
     // Same exact name from 2+ providers: sort provider ids, aliases get -1..-N.
     const rank = new Map();
@@ -156,7 +170,10 @@ exports.handler = async (event) => {
       const keys = await storeGet('api-keys', []);
       await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
     }
-    return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify({ object: 'list', data }) };
+    if (data.length) {
+      await storeSet('v1-models-cache', { at: Date.now(), data }).catch(() => {});
+    }
+    return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'MISS' }, body: JSON.stringify({ object: 'list', data }) };
   }
 
   if (event.httpMethod === 'POST' && path === '/v1/chat/completions') {
