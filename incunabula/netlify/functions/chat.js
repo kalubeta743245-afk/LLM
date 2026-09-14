@@ -92,8 +92,22 @@ exports.handler = async (event) => {
     }
 
     const client = makeClient(provider);
-    const chatParams = { model, messages, max_tokens: maxTokens, temperature };
-    if (reasoning) chatParams.extra_body = { reasoning_effort: 'low' };
+    // Full OpenAI passthrough: forward every SDK field (tools, tool_choice,
+    // response_format, stream_options, penalties, seed, reasoning_effort,
+    // verbosity, service_tier, etc.). Only gateway-internal keys are stripped.
+    // Never send both max_tokens and max_completion_tokens.
+    const INTERNAL = new Set(['providerId', 'maxTokens', 'reasoning']);
+    const chatParams = { model, messages };
+    for (const [k, v] of Object.entries(JSON.parse(event.body || '{}'))) {
+      if (!INTERNAL.has(k) && v !== undefined) chatParams[k] = v;
+    }
+    if (chatParams.temperature === undefined) chatParams.temperature = temperature;
+    if (chatParams.max_tokens === undefined && chatParams.max_completion_tokens === undefined) {
+      chatParams.max_tokens = maxTokens;
+    }
+    if (reasoning) {
+      chatParams.extra_body = { ...(chatParams.extra_body || {}), reasoning_effort: 'low' };
+    }
 
     const started = Date.now();
     let res;
@@ -129,6 +143,7 @@ exports.handler = async (event) => {
     const ms = Date.now() - started;
 
     const choice = res.choices && res.choices[0];
+    const msg = (choice && choice.message) || {};
     return {
       statusCode: 200,
       headers: cors(),
@@ -136,11 +151,13 @@ exports.handler = async (event) => {
         ok: true,
         model: res.model || model,
         ms,
-        content: (choice && choice.message && choice.message.content) || '',
-        reasoning: (choice && choice.message && choice.message.reasoning) || null,
+        content: msg.content || '',
+        reasoning: msg.reasoning || null,
+        tool_calls: msg.tool_calls || null,
         finishReason: choice && choice.finish_reason,
         usage: res.usage || null,
         id: res.id || null,
+        completion: res,
       }),
     };
   } catch (e) {

@@ -76,12 +76,21 @@ function makeClient(provider) {
   return new OPENAI({ apiKey: secretFor(provider.id) || provider.apiKey, baseURL: provider.baseURL, defaultHeaders: provider.defaultHeaders, timeout: 20000, maxRetries: 1 });
 }
 
+// Raw request parts for endpoints the SDK client doesn't cover (e.g. SSE
+// streaming relay). Same auth + headers as makeClient.
+function providerFetch(provider) {
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${secretFor(provider.id) || provider.apiKey || ''}` };
+  if (provider.defaultHeaders) Object.assign(headers, provider.defaultHeaders);
+  return { url: provider.baseURL + '/chat/completions', headers };
+}
+
 // Worker secrets (wrangler secret put) override hardcoded keys, so a key can
 // be rotated without redeploying. Maps provider id -> secret name.
 // Known model ids per provider, merged with the live /models list so a
 // provider's catalogue stays visible even when its list endpoint is down.
+// TokenForge list: their advertised catalogue (live endpoint exposes a subset).
 const STATIC_MODELS = {
-  tokenforge: ['claude-opus-5', 'glm-5.2', 'deepseek-v4', 'kimi-k3'],
+  tokenforge: ['gpt-6-astra', 'glm-5.3', 'glm-5.2', 'grok-4.5', 'deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-5', 'qwen3.8-27b', 'qwen3.8-max', 'claude-fable-5', 'glm-5.1', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.7', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.4', 'gpt-5.5', 'o3', 'o3-pro', 'o4-mini', 'kimi-k3', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'mistral-large-3', 'mistral-small-4', 'minimax-m2', 'minimax-m2-7', 'qwen3.7-max'],
   tokenharbor: ['th-orchestra', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k3', 'glm-5.3', 'claude-opus-5'],
 };
 
@@ -195,4 +204,4 @@ async function getAllProviders() {
   })));
 }
 
-module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, cors, storeGet, storeSet, getAllProviders, secretFor };
+module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, providerFetch, cors, storeGet, storeSet, getAllProviders, secretFor };

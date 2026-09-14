@@ -47,6 +47,20 @@ async function runFn(fn, request, path) {
   const body = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method) ? await request.text() : '';
   try {
     const result = await fn(toEvent(request, body, path));
+    // SSE streaming envelope: pipe the ReadableStream straight through.
+    if (result && result.stream && typeof result.stream.getReader === 'function') {
+      return new Response(result.stream, {
+        status: result.statusCode || 200,
+        headers: {
+          ...corsHeaders(request),
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          ...(result.headers || {}),
+        },
+      });
+    }
     return json(result.statusCode, result.body, result.headers, request);
   } catch (e) {
     const status = (e && e.status) || 500;

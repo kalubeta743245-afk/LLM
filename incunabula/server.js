@@ -67,6 +67,17 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await v1Fn.handler({ httpMethod: req.method, headers: req.headers, body, path: url.pathname });
+      if (result && result.stream && typeof result.stream.getReader === 'function') {
+        // SSE streaming envelope: pipe the web stream to the response.
+        res.writeHead(result.statusCode || 200, {
+          ...(result.headers || cors()),
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        });
+        const { Readable } = require('stream');
+        return Readable.fromWeb(result.stream).pipe(res);
+      }
       res.writeHead(result.statusCode, { ...(result.headers || cors()), 'Content-Type': 'application/json' });
       return res.end(result.body);
     } catch (e) {

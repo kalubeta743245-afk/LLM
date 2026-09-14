@@ -3,7 +3,7 @@
 //   POST /v1/chat/completions       — {model:"<providerId>/<model>", messages:[...]}
 // Auth: none — open gateway, no key needed.
 // Non-streaming only. Reuses the existing chat/models handlers (ponytail).
-const { cors, storeGet, storeSet, getAllProviders } = require('./_shared');
+const { cors, storeGet, storeSet, getAllProviders, providerFetch } = require('./_shared');
 const chatFn = require('./chat').handler;
 const modelsFn = require('./models').handler;
 
@@ -47,6 +47,83 @@ async function collectModels() {
   return { entries, byModel };
 }
 
+// SSE streaming relay: forwards the client's full body upstream with
+// stream:true and pipes chunks back, rewriting only the model id to the
+// gateway id. Tool-call deltas, usage chunks and [DONE] pass through
+// untouched. Returns an envelope both adapters understand
+// ({statusCode, stream, headers}).
+async function streamRelay(event, provider, full, model, body) {
+  const { url, headers } = providerFetch(provider);
+  let upstream;
+  try {
+    upstream = await fetch(url, {
+      method: 'POST', headers,
+      body: JSON.stringify({ ...body, model, stream: true }),
+    });
+  } catch (e) {
+    const err2 = new Error('Upstream unreachable: ' + (e.message || e));
+    err2.status = 502;
+    throw err2;
+  }
+  if (!upstream.ok || !upstream.body) {
+    const t = await upstream.text().catch(() => '');
+    let msg = 'HTTP ' + upstream.status;
+    try { const j = JSON.parse(t); msg = (j.error && (j.error.message || j.error)) || msg; } catch { /* raw */ }
+    const e = new Error(String(msg).slice(0, 300));
+    e.status = upstream.status;
+    throw e;
+  }
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buf = '';
+  const stream = new ReadableStream({
+    async pull(controller) {
+      while (true) {
+        const nl = buf.indexOf('\n');
+        if (nl !== -1) {
+          let line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          const trimmed = line.trim();
+          if (!trimmed) { controller.enqueue(encoder.encode('\n')); return; }
+          if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') { controller.enqueue(encoder.encode('data: [DONE]\n\n')); return; }
+            try {
+              const chunk = JSON.parse(payload);
+              if (chunk && typeof chunk === 'object' && 'model' in chunk) chunk.model = full;
+              controller.enqueue(encoder.encode('data: ' + JSON.stringify(chunk) + '\n\n'));
+            } catch {
+              controller.enqueue(encoder.encode(line + '\n'));
+            }
+          } else {
+            controller.enqueue(encoder.encode(line + '\n'));
+          }
+          return;
+        }
+        const { done, value } = await reader.read();
+        if (done) {
+          if (buf.trim()) {
+            const rest = buf; buf = '';
+            controller.enqueue(encoder.encode(rest.endsWith('\n') ? rest : rest + '\n'));
+            return;
+          }
+          controller.close();
+          return;
+        }
+        buf += decoder.decode(value, { stream: true });
+      }
+    },
+    cancel() { try { reader.cancel(); } catch { /* ignore */ } },
+  });
+  return {
+    statusCode: 200,
+    stream,
+    headers: cors(event.headers),
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors(event.headers) };
   const path = (event.path || '').replace(/\/+$/, '') || '/v1';
@@ -85,7 +162,6 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'POST' && path === '/v1/chat/completions') {
     let body = {};
     try { body = JSON.parse(event.body || '{}'); } catch { return err(400, 'Bad request — body must be JSON'); }
-    if (body.stream) return err(400, 'Streaming is not supported — use stream:false');
     const full = String(body.model || '');
     let providerId = '';
     let model = '';
@@ -115,10 +191,18 @@ exports.handler = async (event) => {
       if (!model) return err(400, 'model must look like "<providerId>/<model>"');
     }
     const providers = await getAllProviders();
-    if (!providers.find((p) => p.id === providerId)) return err(404, 'Unknown provider: ' + providerId);
+    const provider = providers.find((p) => p.id === providerId);
+    if (!provider) return err(404, 'Unknown provider: ' + providerId);
+    if (provider.localBridge || provider.noAuth) {
+      if (body.stream) return err(400, 'Streaming is not supported for provider "' + providerId + '" — use stream:false');
+    } else if (body.stream) {
+      return streamRelay(event, provider, full, model, body);
+    }
+    // Forward the client's full body (tools, response_format, penalties,
+    // seed, reasoning_effort, …) — chat.js passes everything through.
     const r = await chatFn({
       httpMethod: 'POST', headers: {},
-      body: JSON.stringify({ providerId, model, messages: body.messages || [], maxTokens: body.max_tokens || 512, temperature: body.temperature }),
+      body: JSON.stringify({ ...body, providerId, model }),
     });
     const d = JSON.parse(r.body || '{}');
     if (r.statusCode !== 200 || d.ok === false) return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
@@ -126,6 +210,12 @@ exports.handler = async (event) => {
       keyEntry.lastUsed = Date.now();
       const keys = await storeGet('api-keys', []);
       await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
+    }
+    // Prefer the raw upstream completion (keeps tool_calls, logprobs, usage…).
+    if (d.completion && typeof d.completion === 'object') {
+      const out = { ...d.completion, model: full };
+      if (!out.usage && d.usage) out.usage = d.usage;
+      return { statusCode: 200, headers: cors(event.headers), body: JSON.stringify(out) };
     }
     return {
       statusCode: 200, headers: cors(event.headers),
