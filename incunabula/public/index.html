@@ -29,6 +29,7 @@ body{background:var(--bg);color:var(--text);line-height:1.5;font-size:14px}
 .visit-pill{display:flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono);font-weight:500;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 14px;white-space:nowrap}
 .visit-pill b{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
 .cards{display:flex;flex-direction:column;gap:16px}
+@media(min-width:1100px){.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}}
 .sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;z-index:10;display:flex;flex-direction:column}
 .sidebar.open{transform:translateX(0)}
 .sidebar-head{padding:20px 16px;border-bottom:1px solid var(--border)}
@@ -49,8 +50,9 @@ body{background:var(--bg);color:var(--text);line-height:1.5;font-size:14px}
 .sidebar-overlay{display:none}
 .mobile-menu{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:6px;border:1px solid var(--border-strong);background:transparent;cursor:pointer;color:var(--text);flex-shrink:0}
 .mobile-menu svg{width:18px;height:18px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;padding:16px 20px}
-.card-head{display:flex;align-items:center;gap:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;padding:0}
+.card-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.card-body{padding:16px 20px 20px}
 .card-logo{width:40px;height:40px;border-radius:8px;object-fit:contain;flex-shrink:0;border:1px solid var(--border);background:var(--surface-2)}
 .card-logo.tile{display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:700;font-size:17px}
 .card-info{flex:1;min-width:0}
@@ -70,7 +72,7 @@ body{background:var(--bg);color:var(--text);line-height:1.5;font-size:14px}
 .icon-btn{width:34px;height:34px;border-radius:6px;border:1px solid var(--border-strong);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:border-color 160ms,background-color 160ms}
 .icon-btn:hover{border-color:var(--accent);color:var(--accent)}
 .icon-btn svg{width:15px;height:15px}
-.key-row{display:flex;align-items:center;gap:8px;margin-top:12px;padding:8px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px}
+.key-row{display:flex;align-items:center;gap:8px;margin:0;padding:8px 20px;background:var(--surface-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-wrap:wrap}
 .key-lbl{font-size:10px;font-weight:600;font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--faint);flex-shrink:0}
 .key-val{font-size:11px;font-family:var(--mono);color:var(--muted);word-break:break-all;flex:1;min-width:0}
 .card-body{padding-top:14px}
@@ -93,6 +95,7 @@ textarea.input{min-height:60px;resize:vertical;line-height:1.55}
 .prompt-area{position:relative}
 .btn-row{display:flex;gap:8px;margin-top:12px}
 .btn{font-family:var(--sans);font-weight:600;font-size:13px;border-radius:6px;padding:9px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);transition:border-color 160ms,background-color 160ms}
+.btn svg{width:14px;height:14px;flex-shrink:0}
 .btn-primary{background:#fff;color:#000;border-color:#fff}
 .btn-primary:hover{background:var(--accent);border-color:var(--accent)}
 .btn-primary:disabled{opacity:.4;cursor:not-allowed}
@@ -130,12 +133,17 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;display:block}
   .main{margin-left:0;padding:16px;max-width:none}
   .mobile-menu{display:flex}
+  .page-head{flex-wrap:wrap}
+  .head-right{flex-wrap:wrap}
   .cards{gap:12px}
   .visit-pill{display:none}
 }
 @media(max-width:480px){
   body{font-size:15px}
   .page-title{font-size:19px}
+  .card-head{padding:14px 14px}
+  .key-row{padding:8px 14px}
+  .card-body{padding:14px 14px 16px}
   .card-name{font-size:15px}
   .preset-row{gap:6px}
   .preset-pill{font-size:12px;padding:6px 12px}
@@ -143,6 +151,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   .icon-btn{min-width:42px;min-height:42px}
   .mobile-menu{min-width:42px;min-height:42px}
   .card-body .input,.card-body .select{font-size:16px}
+  dialog{top:auto;left:0;right:0;bottom:0;margin:0;width:100%;max-width:100%;border-radius:12px 12px 0 0;max-height:88vh;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none;animation:none} }
 </style>
@@ -237,6 +246,6 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   </div>
 </div>
 
-<script src="app.js?v=41"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
