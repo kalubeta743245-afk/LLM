@@ -106,4 +106,15 @@ export default {
     const res = await env.ASSETS.fetch(request);
     return res;
   },
+
+  // Cron keep-alive: pings the bridge host so free tiers (Koyeb/ModelScope
+  // sleep after ~1h idle) stay warm. No-op when BRIDGE_URL is unset.
+  async scheduled(event, env) {
+    try {
+      const base = env.BRIDGE_URL ? String(env.BRIDGE_URL).replace(/\/+$/, '') : '';
+      if (!base) return;
+      const r = await fetch(base + '/ping', { signal: AbortSignal.timeout(20000) });
+      await r.text().catch(() => '');
+    } catch { /* bridge asleep; next tick retries */ }
+  },
 };

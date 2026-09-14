@@ -14,4 +14,7 @@ binding = "MODELLAB_KV"
 id = "51ffb6751cb048fcb72bad15816bb342"
 
 [vars]
-BRIDGE_URL = "https://project-italiano-expansys-forge.trycloudflare.com"
+BRIDGE_URL = "https://brandon-suspended-instead-chair.trycloudflare.com"
+
+[triggers]
+crons = ["*/50 * * * *"]

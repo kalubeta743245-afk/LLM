@@ -105,6 +105,13 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Keep-alive ping for free hosts (Koyeb/ModelScope sleep on idle).
+  // No side effects — safe to hit every few minutes via cron.
+  if (url.pathname === '/ping' && req.method === 'GET') {
+    res.writeHead(200, { ...cors(), 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ ok: true, bridge: true }));
+  }
+
   // Static files
   let filePath = path.join(PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
   serveStatic(res, filePath);
