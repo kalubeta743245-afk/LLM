@@ -30,7 +30,7 @@ if exist "%CONFIG_FILE%" (
 )
 
 if %errorlevel% equ 0 (
-    echo Done. My Site Free provider installed.
+    echo Done. OpenCode Local Tunnel provider installed.
     echo Config: %CONFIG_FILE%
 ) else (
     echo ERROR: Failed to install config.

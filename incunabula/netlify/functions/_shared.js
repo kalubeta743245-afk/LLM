@@ -2,10 +2,10 @@ const OPENAI = require('openai');
 
 const PROVIDERS = [
   {
-    // My Site Free: OpenCode Zen free models. List over HTTPS; chat runs on
+    // OpenCode Local Tunnel: OpenCode Zen free models. List over HTTPS; chat runs on
     // the desktop server's opencode CLI (locally or via BRIDGE_URL relay).
     id: 'mysitefree',
-    name: 'My Site Free',
+    name: 'OpenCode Local Tunnel',
     tag: 'MF',
     color: '#16A34A',
     baseURL: 'https://opencode.ai/zen/v1',

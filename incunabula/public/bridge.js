@@ -3,7 +3,7 @@
 //
 //   1. Save this file anywhere, then run:  node bridge.js
 //   2. Keep it running, open the Incunabula site in your browser.
-//   3. The "My Site Free" card automatically uses YOUR pc (badge shows "your pc").
+//   3. The "OpenCode Local Tunnel" card automatically uses YOUR pc (badge shows "your pc").
 //
 // Nothing is uploaded: prompts run through your local opencode CLI only.
 // Stop it any time with Ctrl+C. Listens on http://127.0.0.1:8899 (loopback only).
@@ -190,7 +190,7 @@ const server = http.createServer(async (req, res) => {
     if (fn === 'models') {
       const started = Date.now();
       const ids = await zenFree();
-      return send(200, { ok: true, provider: 'My Site Free', count: ids.length, ms: Date.now() - started, models: ids, via: 'your pc' });
+      return send(200, { ok: true, provider: 'OpenCode Local Tunnel', count: ids.length, ms: Date.now() - started, models: ids, via: 'your pc' });
     }
     const ids = await zenFree();
     const fid = String(body.model || '').replace(/^opencode\//, '');
@@ -212,7 +212,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log('Incunabula bridge on http://127.0.0.1:' + PORT + ' — open the site and use My Site Free.');
+  console.log('Incunabula bridge on http://127.0.0.1:' + PORT + ' — open the site and use OpenCode Local Tunnel.');
   // Auto-start permanent Cloudflare tunnel
   startTunnelManager();
 });

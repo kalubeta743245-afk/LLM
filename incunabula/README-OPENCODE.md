@@ -1,12 +1,7 @@
-# My Site Free - OpenCode Provider
+# OpenCode Local Tunnel - OpenCode Provider
 
-## Quick Start
+Installs "OpenCode Local Tunnel" as a local provider in OpenCode with these models:
 
-Run `install-opencode-provider.bat` as Administrator to install the provider.
-
-## What It Does
-
-Installs "My Site Free" as a local provider in OpenCode with these models:
 - mimo-v2.5-free
 - deepseek-v4-flash-free
 - big-pickle
@@ -16,20 +11,23 @@ Installs "My Site Free" as a local provider in OpenCode with these models:
 - nemotron-3-ultra-free
 - nemotron-3.5-lightning-free
 
-## Requirements
+## Prerequisites
 
-- My Site Free bridge running on `localhost:8899` (auto-starts on boot)
-- OpenCode installed
+- Node.js 18+
+- OpenCode CLI: `npm i -g opencode-ai`
+- OpenCode Local Tunnel bridge running on `localhost:8899` (auto-starts on boot)
 
-## How It Works
+## Install
 
-The provider connects to your local My Site Free bridge. A Cloudflare tunnel provides remote access at a permanent `.trycloudflare.com` address.
+Run `install-opencode-provider.bat` as administrator.
 
-## Files
+The provider connects to your local OpenCode Local Tunnel bridge. A Cloudflare tunnel provides remote access at a permanent `.trycloudflare.com` address.
 
-- `opencode-config.json` - Provider configuration
-- `install-opencode-provider.bat` - Installer script
+## Usage
 
-## Manual Install
+1. Start the bridge: `node bridge.js` (or it auto-starts on boot)
+2. Open OpenCode CLI
+3. Select "OpenCode Local Tunnel" as provider
+4. Pick a free model and chat
 
-Copy `opencode-config.json` to `~/.config/opencode/config.json` or merge its contents into your existing config.
+All prompts run through YOUR local OpenCode CLI - nothing leaves your PC.

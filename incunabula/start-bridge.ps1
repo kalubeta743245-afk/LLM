@@ -1,6 +1,6 @@
-# start-bridge.ps1 - Waits 30s then starts bridge.js in background
+# start-bridge.ps1 - Starts bridge.js fully hidden (no CMD window)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "SilentlyContinue"
 
 $logDir = "$PSScriptRoot\.data"
 $logFile = "$logDir\bridge.log"
@@ -13,18 +13,14 @@ if (-not (Test-Path $logDir)) {
 # Check if port 8899 is already in use (bridge already running)
 $portInUse = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
 if ($portInUse) {
-    Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Bridge already running on port $port, skipping."
     exit 0
 }
 
-Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Waiting 30 seconds for network..."
+# Wait for network
 Start-Sleep -Seconds 30
 
 $nodeExe = "node"
 $bridgeScript = "$PSScriptRoot\public\bridge.js"
 
-Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Starting bridge.js..."
-
-$process = Start-Process -FilePath $nodeExe -ArgumentList $bridgeScript -WorkingDirectory $PSScriptRoot -RedirectStandardOutput $logFile -RedirectStandardError "$logDir\bridge-error.log" -NoNewWindow -PassThru -WindowStyle Hidden
-
-Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Bridge started with PID $($process.Id)"
+# Start bridge fully hidden - no window at all
+$process = Start-Process -FilePath $nodeExe -ArgumentList $bridgeScript -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru

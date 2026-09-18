@@ -1,5 +1,5 @@
 const PROVIDERS = [
-  { id:'mysitefree', name:'My Site Free', color:'#16A34A', baseURL:'https://opencode.ai/zen/v1', noAuth:true, defaultModel:'llama-3.1-8b-fast', icon:'', builtIn:true },
+  { id:'mysitefree', name:'OpenCode Local Tunnel', color:'#16A34A', baseURL:'https://opencode.ai/zen/v1', noAuth:true, defaultModel:'llama-3.1-8b-fast', icon:'', builtIn:true },
   { id:'tokenrouter', name:'TokenRouter', color:'#2563eb', baseURL:'https://api.tokenrouter.com/v1', defaultModel:'z-ai/glm-5.3-free', icon:'https://www.tokenrouter.com/logo-without-title.png', builtIn:true },
   { id:'nvidia', name:'NVIDIA NIM', color:'#76b900', baseURL:'https://integrate.api.nvidia.com/v1', defaultModel:'meta/llama-3.3-70b-instruct', icon:'https://developer.download.nvidia.com/icons/m48-nim-256px-blk.png', builtIn:true },
   { id:'openrouter', name:'OpenRouter', color:'#8b5cf6', baseURL:'https://openrouter.ai/api/v1', defaultModel:'openai/gpt-4o-mini', icon:'https://openrouter.ai/brand/v2/openrouter-glyph-light.svg', builtIn:true },
@@ -33,7 +33,7 @@ async function callGet(fn) {
 }
 
 async function callFn(fn, body) {
-  // Visitor bridge: if THEIR pc runs bridge.js, My Site Free uses their
+  // Visitor bridge: if THEIR pc runs bridge.js, OpenCode Local Tunnel uses their
   // machine + their opencode CLI — the owner pc can stay off.
   if ((fn === 'chat' || fn === 'models') && body && body.providerId === 'mysitefree' && await bridgeAlive()) {
     try { return await bridgeFn(fn, body); } catch { /* fall through to cloud */ }
@@ -324,7 +324,7 @@ function buildCard(p) {
     kr.appendChild(el('span', 'key-val', 'managed by server'));
   }
 
-  // tunnel row (My Site Free only)
+  // tunnel row (OpenCode Local Tunnel only)
   let tunnelRow = null;
   if (p.id === 'mysitefree') {
     tunnelRow = el('div', 'key-row');
@@ -463,7 +463,7 @@ function buildCard(p) {
       res.className = 'result placeholder'; res.textContent = 'Pick a model and hit Test.';
       const nb = document.getElementById('nav-badge-' + p.id);
       if (nb) nb.textContent = d.count;
-      // Auto-check tunnel status for My Site Free
+      // Auto-check tunnel status for OpenCode Local Tunnel
       if (p.id === 'mysitefree') {
         const tcheck = document.querySelector('#tunnel-row-' + p.id + ' .icon-btn');
         if (tcheck) tcheck.click();

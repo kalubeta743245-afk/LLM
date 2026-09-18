@@ -87,7 +87,7 @@ exports.handler = async (event) => {
     const base = host ? (getHeader('x-forwarded-proto') || 'https') + '://' + host + '/v1' : undefined;
     const payload = { ok: true, providers, keys };
     if (base) payload.universal_base = base;
-    // Include tunnel URL for My Site Free as an alternative base
+    // Include tunnel URL for OpenCode Local Tunnel as an alternative base
     const tunnelUrl = readTunnelUrl();
     if (tunnelUrl && tunnelUrl !== 'starting...') payload.tunnel_url = tunnelUrl;
     return { statusCode: 200, headers: cors(), body: JSON.stringify(payload) };
