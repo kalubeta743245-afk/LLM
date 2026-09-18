@@ -26,14 +26,41 @@ function readTunnelUrl() {
 }
 
 function startTunnelManager() {
-  const ps = path.join(__dirname, '..', 'tunnel-manager.ps1');
-  if (!fs.existsSync(ps)) return;
+  const cf = path.join(__dirname, '..', 'cloudflared.exe');
+  if (!fs.existsSync(cf)) return;
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   try {
-    spawn('powershell.exe', [
-      '-ExecutionPolicy', 'Bypass',
-      '-WindowStyle', 'Hidden',
-      '-File', ps,
-    ], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    const child = spawn(cf, ['tunnel', '--url', 'http://localhost:8899'], {
+      detached: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    });
+    child.unref();
+    let found = false;
+    const deadline = Date.now() + 20000;
+    function onLine(line) {
+      const m = line.match(/https:\/\/[a-z0-9\-]+\.trycloudflare\.com/);
+      if (m && !found) {
+        found = true;
+        fs.writeFileSync(TUNNEL_URL_FILE, m[0]);
+      }
+    }
+    let buf = '';
+    child.stderr.on('data', (d) => {
+      buf += d.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const l of lines) onLine(l);
+    });
+    child.stdout.on('data', (d) => {
+      buf += d.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const l of lines) onLine(l);
+    });
+    // Final check after deadline
+    setTimeout(() => {
+      if (!found && buf) onLine(buf);
+      if (!found) fs.writeFileSync(TUNNEL_URL_FILE, 'failed');
+    }, 22000);
   } catch { /* ignore */ }
 }
 
