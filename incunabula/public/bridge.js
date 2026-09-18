@@ -188,11 +188,32 @@ const server = http.createServer(async (req, res) => {
         const c = last && last.content;
         const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || '').join('') : '';
         const content = await cliChat(fid, (text || 'ping').slice(0, 4000));
+        const id = 'chatcmpl-' + Date.now().toString(36);
+        const created = Math.floor(Date.now() / 1000);
+        const model = body.model || fid;
+
+        // Streaming: send content word-by-word as SSE chunks
+        if (body.stream) {
+          res.writeHead(200, {
+            ...CORS,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+          const words = content.split(/(\s+)/);
+          for (let i = 0; i < words.length; i++) {
+            const chunk = { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { content: words[i] }, finish_reason: null }] };
+            res.write('data: ' + JSON.stringify(chunk) + '\n\n');
+          }
+          const final = { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] };
+          res.write('data: ' + JSON.stringify(final) + '\n\n');
+          res.write('data: [DONE]\n\n');
+          return res.end();
+        }
+
+        // Non-streaming: return complete JSON
         return send(200, {
-          id: 'chatcmpl-' + Date.now().toString(36),
-          object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model: body.model || fid,
+          id, object: 'chat.completion', created, model,
           choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
           usage: null,
         });
