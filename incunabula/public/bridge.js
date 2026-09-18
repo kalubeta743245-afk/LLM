@@ -162,8 +162,8 @@ const server = http.createServer(async (req, res) => {
     return send(200, { ok: true, tunnelUrl, alive });
   }
 
-  // OpenAI-compatible: GET /v1/models
-  if (url.pathname === '/v1/models' && req.method === 'GET') {
+  // OpenAI-compatible: GET /v1/models OR /models
+  if ((url.pathname === '/v1/models' || url.pathname === '/models') && req.method === 'GET') {
     try {
       const ids = await zenFree();
       const data = ids.map((id) => ({ id, object: 'model', owned_by: 'mysitefree' }));
@@ -171,8 +171,8 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return send(500, { error: { message: e.message } }); }
   }
 
-  // OpenAI-compatible: POST /v1/chat/completions
-  if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
+  // OpenAI-compatible: POST /v1/chat/completions OR /chat/completions
+  if ((url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions') && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req) || '{}'); } catch { return send(400, { error: { message: 'Bad request' } }); }
     const fid = String(body.model || '').replace(/^opencode\//, '').replace(/^mysitefree\//, '');
