@@ -10,6 +10,7 @@ const FNS = {
   'custom-providers': require('../netlify/functions/custom-providers').handler,
   v1: require('../netlify/functions/v1').handler,
   'api-keys': require('../netlify/functions/api-keys').handler,
+  'model-dedup': require('../netlify/functions/model-dedup').handler,
 };
 
 function corsHeaders(request) {

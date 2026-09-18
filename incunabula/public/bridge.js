@@ -65,7 +65,7 @@ function startTunnelManager() {
 }
 
 function pingUrl(url) {
-  return fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(4000) })
+  return fetch(url + '/ping', { method: 'GET', signal: AbortSignal.timeout(5000) })
     .then((r) => r.ok).catch(() => false);
 }
 
