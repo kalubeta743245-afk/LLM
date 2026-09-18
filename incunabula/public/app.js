@@ -704,12 +704,62 @@ function wireDialog() {
 
 let uiBuilt = false;
 let serverKeys = null; // provider keys from Cloudflare secrets, password-gated
+
+function showUpdateLoader() {
+  const existing = document.getElementById('update-loader');
+  if (existing) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'update-loader';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px';
+  overlay.innerHTML = `
+    <div style="width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite"></div>
+    <div style="font-size:15px;font-weight:600;color:var(--text)">Checking OpenCode updates…</div>
+    <div id="update-status" style="font-size:12px;font-family:var(--mono);color:var(--muted)"></div>
+  `;
+  const style = document.createElement('style');
+  style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+  overlay.appendChild(style);
+  document.body.appendChild(overlay);
+}
+
+function hideUpdateLoader() {
+  const overlay = document.getElementById('update-loader');
+  if (overlay) overlay.remove();
+}
+
+function setUpdateStatus(text) {
+  const el = document.getElementById('update-status');
+  if (el) el.textContent = text;
+}
+
+async function runBridgeUpdate() {
+  showUpdateLoader();
+  try {
+    setUpdateStatus('Checking version…');
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 180000);
+    const r = await fetch(BRIDGE + '/api/update', { method: 'POST', signal: c.signal });
+    clearTimeout(t);
+    const d = await r.json().catch(() => ({}));
+    if (d.updated) {
+      setUpdateStatus('Updated to ' + d.after + ' — ' + d.count + ' free models');
+    } else {
+      setUpdateStatus('Up to date (' + d.after + ') — ' + d.count + ' free models');
+    }
+    await new Promise(ok => setTimeout(ok, 800));
+  } catch {
+    setUpdateStatus('Bridge offline — skipped');
+    await new Promise(ok => setTimeout(ok, 600));
+  }
+  hideUpdateLoader();
+}
+
 function unlock() {
   document.getElementById('lock').classList.add('hidden');
   if (!uiBuilt) { uiBuilt = true; buildUI(); }
   revealServerKeys();
-  // Instant update: check OpenCode version → update if newer → fetch fresh models.
-  if (bridgeAlive()) fetch(BRIDGE + '/api/update', { method: 'POST' }).catch(() => {});
+  // Instant update: show loader → check version → update if needed → fetch models.
+  if (bridgeAlive()) runBridgeUpdate();
 }
 
 // After correct password: fetch live provider keys from secrets and upgrade
