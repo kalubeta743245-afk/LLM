@@ -162,6 +162,44 @@ const server = http.createServer(async (req, res) => {
     return send(200, { ok: true, tunnelUrl, alive });
   }
 
+  // OpenAI-compatible: GET /v1/models
+  if (url.pathname === '/v1/models' && req.method === 'GET') {
+    try {
+      const ids = await zenFree();
+      const data = ids.map((id) => ({ id, object: 'model', owned_by: 'mysitefree' }));
+      return send(200, { object: 'list', data });
+    } catch (e) { return send(500, { error: { message: e.message } }); }
+  }
+
+  // OpenAI-compatible: POST /v1/chat/completions
+  if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req) || '{}'); } catch { return send(400, { error: { message: 'Bad request' } }); }
+    const fid = String(body.model || '').replace(/^opencode\//, '').replace(/^mysitefree\//, '');
+    try {
+      const ids = await zenFree();
+      if (!ids.includes(fid)) return send(400, { error: { message: 'Unknown model: ' + (body.model || '') } });
+      if (busy) return send(429, { error: { message: 'busy, retry in a minute' } });
+      busy = true;
+      const started = Date.now();
+      try {
+        const msgs = body.messages || [];
+        const last = [...msgs].reverse().find((m) => m.role === 'user');
+        const c = last && last.content;
+        const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || '').join('') : '';
+        const content = await cliChat(fid, (text || 'ping').slice(0, 4000));
+        return send(200, {
+          id: 'chatcmpl-' + Date.now().toString(36),
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: body.model || fid,
+          choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+          usage: null,
+        });
+      } finally { busy = false; }
+    } catch (e) { return send(e.status || 500, { error: { message: e.message || 'Request failed' } }); }
+  }
+
   if (url.pathname === '/ping' && req.method === 'GET') {
     let cli = false;
     try { await new Promise((ok, no) => { const c = spawn(cliBin(), ['--version'], { stdio: ['ignore', 'ignore', 'ignore'] }); c.on('error', no); c.on('close', (code) => (code === 0 ? ok() : no())); setTimeout(no, 8000); }); cli = true; } catch { cli = false; }
