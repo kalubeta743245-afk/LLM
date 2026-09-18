@@ -125,6 +125,15 @@ function secretFor(id) {
   return '';
 }
 
+// Read the tunnel URL from the bridge's persistent file.
+function readTunnelUrl() {
+  try {
+    const fs = require('fs');
+    const p = require('path').join(__dirname, '..', '..', '.data', 'tunnel-url.txt');
+    return fs.readFileSync(p, 'utf8').trim();
+  } catch { return ''; }
+}
+
 function cors(reqHeaders) {
   // Open gateway: any origin / SDK / browser can call without CORS errors.
   // Echo preflight-requested headers when known, else wildcard.
@@ -250,4 +259,4 @@ async function getOpenCodeModels() {
   return live.sort((a, b) => a.localeCompare(b));
 }
 
-module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, providerFetch, cors, storeGet, storeSet, getAllProviders, secretFor, fetchOpenCodeModels, getOpenCodeModels };
+module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, providerFetch, cors, storeGet, storeSet, getAllProviders, secretFor, readTunnelUrl, fetchOpenCodeModels, getOpenCodeModels };

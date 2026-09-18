@@ -18,6 +18,7 @@ const ICON_TRASH = SVG('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0
 const ICON_EDIT = SVG('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>');
 const ICON_PLUS = SVG('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>');
 const ICON_MENU = SVG('<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>');
+const ICON_CHECK = SVG('<polyline points="20 6 9 17 4 12"/>');
 
 // Backend base: same host when served locally or via tunnel (CLI-backed free
 // models live there); the Cloudflare Worker otherwise.
@@ -179,6 +180,19 @@ function buildNav() {
     });
     nav.appendChild(item);
   });
+
+  // Model Manager nav item
+  const dedupItem = el('div', 'nav-item');
+  dedupItem.dataset.pid = 'dedup';
+  const dedupName = el('span', null, 'Model Manager');
+  dedupItem.append(dedupName);
+  dedupItem.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    dedupItem.classList.add('active');
+    document.getElementById('card-dedup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    closeMobileNav();
+  });
+  nav.appendChild(dedupItem);
 }
 
 function addCustomToNav(p) {
@@ -310,6 +324,43 @@ function buildCard(p) {
     kr.appendChild(el('span', 'key-val', 'managed by server'));
   }
 
+  // tunnel row (My Site Free only)
+  let tunnelRow = null;
+  if (p.id === 'mysitefree') {
+    tunnelRow = el('div', 'key-row');
+    tunnelRow.id = 'tunnel-row-' + p.id;
+    const tlbl = el('span', 'key-lbl', 'Tunnel');
+    const tval = el('span', 'key-val', 'checking…');
+    tval.id = 'tunnel-url-val';
+    const tdot = el('span', 'tunnel-dot');
+    tdot.id = 'tunnel-dot';
+    tdot.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:#888';
+    tval.prepend(tdot);
+    const tcheck = el('button', 'icon-btn');
+    tcheck.innerHTML = ICON_CHECK;
+    tcheck.title = 'Check tunnel status';
+    tcheck.onclick = async () => {
+      tdot.style.background = '#888';
+      tval.childNodes[tval.childNodes.length - 1].textContent = 'checking…';
+      try {
+        const r = await fetch(BRIDGE + '/tunnel-status');
+        const d = await r.json();
+        tdot.style.background = d.alive ? '#22c55e' : '#ef4444';
+        tval.childNodes[tval.childNodes.length - 1].textContent = d.tunnelUrl || 'none';
+        tval.title = d.tunnelUrl || '';
+        if (d.tunnelUrl) {
+          let copyBtn = tval.querySelector('.copy-btn');
+          if (!copyBtn) { copyBtn = el('button', 'copy-btn', 'copy'); copyBtn.style.marginLeft = '6px'; tval.appendChild(copyBtn); }
+          copyBtn.onclick = () => copy(d.tunnelUrl, copyBtn);
+        }
+      } catch {
+        tdot.style.background = '#ef4444';
+        tval.childNodes[tval.childNodes.length - 1].textContent = 'unreachable';
+      }
+    };
+    tunnelRow.append(tlbl, tval, tcheck);
+  }
+
   // body
   const body = el('div', 'card-body');
 
@@ -379,7 +430,7 @@ function buildCard(p) {
   res.className = 'result placeholder'; res.textContent = 'Run a test to see the result here.';
 
   body.append(modelField, promptField, br, res);
-  card.append(header, kr, body);
+  card.append(header, kr, ...(tunnelRow ? [tunnelRow] : []), body);
 
   // search handler
   si.addEventListener('input', () => {
@@ -412,6 +463,11 @@ function buildCard(p) {
       res.className = 'result placeholder'; res.textContent = 'Pick a model and hit Test.';
       const nb = document.getElementById('nav-badge-' + p.id);
       if (nb) nb.textContent = d.count;
+      // Auto-check tunnel status for My Site Free
+      if (p.id === 'mysitefree') {
+        const tcheck = document.querySelector('#tunnel-row-' + p.id + ' .icon-btn');
+        if (tcheck) tcheck.click();
+      }
     } catch (e) {
       badge.className = 'status err'; badge.textContent = 'error';
       res.classList.remove('placeholder');
@@ -444,6 +500,110 @@ function buildCard(p) {
 
   doLoad();
   spy.observe(card);
+  return card;
+}
+
+/* ─── Model Manager card ─── */
+function buildDedupCard() {
+  const card = el('div', 'card');
+  card.id = 'card-dedup';
+  card.style.cssText = 'grid-column:1/-1';
+
+  const header = el('div', 'card-head');
+  header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)';
+  const title = el('div', 'card-info');
+  title.appendChild(el('div', 'card-name', 'Model Manager'));
+  const countBadge = el('span', 'status', 'loading…');
+  countBadge.style.marginLeft = '8px';
+  header.append(title, countBadge);
+
+  const body = el('div', 'card-body');
+  body.style.cssText = 'padding:16px 20px 20px';
+  const list = el('div', 'dedup-list');
+  body.appendChild(list);
+
+  card.append(header, body);
+
+  async function load() {
+    countBadge.className = 'status load';
+    countBadge.textContent = 'loading…';
+    list.innerHTML = '';
+    try {
+      const d = await callGet('model-dedup');
+      const groups = d.groups || [];
+      countBadge.textContent = groups.length + ' duplicate' + (groups.length !== 1 ? 's' : '');
+      countBadge.className = 'status' + (groups.length ? ' ok' : '');
+
+      if (!groups.length) {
+        list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center">No duplicate models found. Each model is available on only one provider.</div>';
+        return;
+      }
+
+      for (const g of groups) {
+        const row = el('div', 'dedup-row');
+        const nameEl = el('span', 'dedup-model', g.model);
+        nameEl.title = g.model;
+        row.appendChild(nameEl);
+        const chipRow = el('div', 'dedup-chips');
+        for (const p of g.providers) {
+          const chip = el('button', 'dedup-chip');
+          chip.dataset.model = g.model;
+          chip.dataset.pid = p.id;
+          chip.style.cssText = 'background:' + (p.color || '#666') + '22;border:1px solid ' + (p.color || '#666') + '66;color:' + (p.color || '#666');
+          if (p.name) chip.title = p.name + (p.enabled ? ' (enabled)' : ' (disabled)');
+          chip.textContent = p.name || p.id;
+          if (!p.enabled) {
+            chip.classList.add('dedup-chip-off');
+          }
+          chip.addEventListener('click', () => toggleChip(chip));
+          chipRow.appendChild(chip);
+        }
+        row.appendChild(chipRow);
+        list.appendChild(row);
+      }
+    } catch (e) {
+      countBadge.textContent = 'error';
+      countBadge.className = 'status err';
+      list.innerHTML = '<div class="result err">✗ ' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function toggleChip(chip) {
+    const model = chip.dataset.model;
+    const pid = chip.dataset.pid;
+    const wasOn = !chip.classList.contains('dedup-chip-off');
+    // Optimistic UI
+    chip.classList.toggle('dedup-chip-off', wasOn);
+    chip.style.opacity = wasOn ? '0.4' : '1';
+    chip.style.filter = wasOn ? 'grayscale(1)' : '';
+    try {
+      const d = await callMethod('model-dedup', 'POST', { model, providerId: pid, enabled: !wasOn });
+      // Rebuild chips from response
+      if (d.ok && d.group) {
+        const row = chip.closest('.dedup-row');
+        const chipRow = row.querySelector('.dedup-chips');
+        chipRow.innerHTML = '';
+        for (const p of d.group.providers) {
+          const c = el('button', 'dedup-chip');
+          c.dataset.model = d.group.model;
+          c.dataset.pid = p.id;
+          c.style.cssText = 'background:' + (p.color || '#666') + '22;border:1px solid ' + (p.color || '#666') + '66;color:' + (p.color || '#666');
+          if (p.name) c.title = p.name + (p.enabled ? ' (enabled)' : ' (disabled)');
+          c.textContent = p.name || p.id;
+          if (!p.enabled) c.classList.add('dedup-chip-off');
+          c.addEventListener('click', () => toggleChip(c));
+          chipRow.appendChild(c);
+        }
+      }
+    } catch {
+      // Revert on failure
+      chip.classList.toggle('dedup-chip-off', !wasOn);
+      chip.style.opacity = wasOn ? '1' : '0.4';
+      chip.style.filter = wasOn ? '' : 'grayscale(1)';
+    }
+  }
+
+  load();
   return card;
 }
 
@@ -526,6 +686,8 @@ function buildUI() {
       addCustomToNav(c);
     }
   }).catch(() => {});
+  // Model Manager card (dedup)
+  grid.appendChild(buildDedupCard());
   // Visitor count
   callGet('visits').then((v) => {
     if (v && v.ok) document.getElementById('visits').innerHTML = `<b>${v.count}</b> visitors`;

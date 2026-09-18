@@ -9,11 +9,38 @@
 // Stop it any time with Ctrl+C. Listens on http://127.0.0.1:8899 (loopback only).
 const http = require('http');
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
 const PORT = 8899;
 const ZEN = 'https://opencode.ai/zen/v1';
 let cache = { t: 0, ids: [] };
 let busy = false;
+
+// --- Tunnel helpers ---
+const DATA_DIR = path.join(__dirname, '..', '.data');
+const TUNNEL_URL_FILE = path.join(DATA_DIR, 'tunnel-url.txt');
+
+function readTunnelUrl() {
+  try { return fs.readFileSync(TUNNEL_URL_FILE, 'utf8').trim(); } catch { return ''; }
+}
+
+function startTunnelManager() {
+  const ps = path.join(__dirname, '..', 'tunnel-manager.ps1');
+  if (!fs.existsSync(ps)) return;
+  try {
+    spawn('powershell.exe', [
+      '-ExecutionPolicy', 'Bypass',
+      '-WindowStyle', 'Hidden',
+      '-File', ps,
+    ], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch { /* ignore */ }
+}
+
+function pingUrl(url) {
+  return fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(4000) })
+    .then((r) => r.ok).catch(() => false);
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -99,6 +126,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   const send = (code, obj) => { res.writeHead(code, { ...CORS, 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
+  if (url.pathname === '/tunnel-status' && req.method === 'GET') {
+    const tunnelUrl = readTunnelUrl();
+    if (!tunnelUrl || tunnelUrl === 'starting...') {
+      return send(200, { ok: true, tunnelUrl: tunnelUrl || null, alive: false });
+    }
+    const alive = await pingUrl(tunnelUrl);
+    return send(200, { ok: true, tunnelUrl, alive });
+  }
+
   if (url.pathname === '/ping' && req.method === 'GET') {
     let cli = false;
     try { await new Promise((ok, no) => { const c = spawn(cliBin(), ['--version'], { stdio: ['ignore', 'ignore', 'ignore'] }); c.on('error', no); c.on('close', (code) => (code === 0 ? ok() : no())); setTimeout(no, 8000); }); cli = true; } catch { cli = false; }
@@ -150,4 +186,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log('Incunabula bridge on http://127.0.0.1:' + PORT + ' — open the site and use My Site Free.');
+  // Auto-start permanent Cloudflare tunnel
+  startTunnelManager();
 });

@@ -122,6 +122,20 @@ async function collectModels() {
     if (!byModel.has(m)) byModel.set(m, new Set());
     byModel.get(m).add(openCodePid);
   }
+  // Apply dedup config: remove disabled providers from byModel.
+  try {
+    const dedupConfig = await storeGet('model-dedup-config', {});
+    if (dedupConfig && Object.keys(dedupConfig).length) {
+      for (const [model, provConfig] of Object.entries(dedupConfig)) {
+        const owners = byModel.get(model);
+        if (!owners) continue;
+        for (const [pid, enabled] of Object.entries(provConfig)) {
+          if (enabled === false) owners.delete(pid);
+        }
+      }
+    }
+  } catch { /* dedup config is optional */ }
+
   return { entries, byModel };
 }
 
@@ -148,7 +162,12 @@ exports.handler = async (event) => {
         return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'HIT' }, body: JSON.stringify({ object: 'list', data: cached.data }) };
       }
     } catch { /* build fresh */ }
-    const { entries, byModel } = await collectModels();
+    const { entries: rawEntries, byModel } = await collectModels();
+    // Filter entries: only keep entries whose provider is still in byModel for that model.
+    const entries = rawEntries.filter((e) => {
+      const owners = byModel.get(e.model);
+      return owners && owners.has(e.providerId);
+    });
     // Same exact name from 2+ providers: sort provider ids, aliases get -1..-N.
     const rank = new Map();
     for (const [name, set] of byModel) {

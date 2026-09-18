@@ -1,4 +1,4 @@
-const { cors, storeGet, storeSet, PROVIDERS, secretFor } = require('./_shared');
+const { cors, storeGet, storeSet, PROVIDERS, secretFor, readTunnelUrl } = require('./_shared');
 const { checkPassword } = require('./auth');
 
 function newKey() {
@@ -87,6 +87,9 @@ exports.handler = async (event) => {
     const base = host ? (getHeader('x-forwarded-proto') || 'https') + '://' + host + '/v1' : undefined;
     const payload = { ok: true, providers, keys };
     if (base) payload.universal_base = base;
+    // Include tunnel URL for My Site Free as an alternative base
+    const tunnelUrl = readTunnelUrl();
+    if (tunnelUrl && tunnelUrl !== 'starting...') payload.tunnel_url = tunnelUrl;
     return { statusCode: 200, headers: cors(), body: JSON.stringify(payload) };
   }
 
