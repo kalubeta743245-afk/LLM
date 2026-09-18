@@ -3,7 +3,7 @@
 //   POST /v1/chat/completions       — {model:"<providerId>/<model>", messages:[...]}
 // Auth: none — open gateway, no key needed.
 // Non-streaming only. Reuses the existing chat/models handlers (ponytail).
-const { cors, storeGet, storeSet, getAllProviders, providerFetch } = require('./_shared');
+const { cors, storeGet, storeSet, getAllProviders, providerFetch, getOpenCodeModels } = require('./_shared');
 const chatFn = require('./chat').handler;
 const modelsFn = require('./models').handler;
 
@@ -91,6 +91,7 @@ async function getModelIndex() {
 
 // Fetch every provider's model list once. Returns the ordered entries plus a
 // modelName -> Set(providerId) index used for alias disambiguation.
+// OpenCode models are fetched dynamically from the Zen API (auto-updates).
 async function collectModels() {
   const providers = await getAllProviders();
   const settled = await Promise.all(providers.map((p) =>
@@ -111,6 +112,15 @@ async function collectModels() {
         byModel.get(name).add(s.p.id);
       }
     } catch { /* skip failed provider */ }
+  }
+  // Inject dynamic OpenCode Zen models (auto-updates when new models release).
+  const openCodeModels = await getOpenCodeModels().catch(() => []);
+  const openCodePid = 'opencode';
+  for (const m of openCodeModels) {
+    if (byModel.has(m) && byModel.get(m).has(openCodePid)) continue;
+    entries.push({ providerId: openCodePid, model: m });
+    if (!byModel.has(m)) byModel.set(m, new Set());
+    byModel.get(m).add(openCodePid);
   }
   return { entries, byModel };
 }

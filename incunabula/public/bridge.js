@@ -26,7 +26,7 @@ async function zenFree() {
   const r = await fetch(ZEN + '/models', { headers: { Accept: 'application/json' } });
   if (!r.ok) throw new Error('free list unreachable: HTTP ' + r.status);
   const d = await r.json();
-  const ids = ((d.data || []).map((m) => m.id) || []).filter((id) => /free|pickle/i.test(id));
+  const ids = ((d.data || []).map((m) => m.id) || []).filter((id) => /free|pickle|:free$/i.test(id));
   if (!ids.length && !cache.ids.length) throw new Error('no free models right now');
   if (ids.length) cache = { t: Date.now(), ids };
   return ids.length ? ids : cache.ids;
