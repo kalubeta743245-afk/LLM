@@ -67,6 +67,33 @@ function readBody(req) {
   return new Promise((resolve) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); });
 }
 
+function cliVersion() {
+  return new Promise((resolve) => {
+    try {
+      const c = spawn(cliBin(), ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      c.stdout.on('data', (d) => { out += d; });
+      c.on('error', () => resolve('unknown'));
+      c.on('close', () => resolve(out.replace(/\x1b\[[0-9;]*m/g, '').trim() || 'unknown'));
+      setTimeout(() => { try { c.kill(); } catch {} resolve('unknown'); }, 8000);
+    } catch { resolve('unknown'); }
+  });
+}
+
+function npmUpdate() {
+  return new Promise((resolve) => {
+    try {
+      const c = spawn('npm', ['install', '-g', 'opencode-ai@latest'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      c.stdout.on('data', (d) => { out += d; });
+      c.stderr.on('data', (d) => { err += d; });
+      c.on('error', () => resolve({ ok: false, error: 'npm not found' }));
+      c.on('close', (code) => resolve({ ok: code === 0, output: (out + err).slice(0, 500) }));
+      setTimeout(() => { try { c.kill(); } catch {} resolve({ ok: false, error: 'update timed out' }); }, 120000);
+    } catch (e) { resolve({ ok: false, error: e.message }); }
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1:' + PORT);
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
@@ -76,6 +103,18 @@ const server = http.createServer(async (req, res) => {
     let cli = false;
     try { await new Promise((ok, no) => { const c = spawn(cliBin(), ['--version'], { stdio: ['ignore', 'ignore', 'ignore'] }); c.on('error', no); c.on('close', (code) => (code === 0 ? ok() : no())); setTimeout(no, 8000); }); cli = true; } catch { cli = false; }
     return send(200, { ok: true, bridge: true, cli });
+  }
+
+  // Instant update: check OpenCode version → update if newer → fetch fresh models.
+  if (url.pathname === '/api/update' && req.method === 'POST') {
+    const before = await cliVersion();
+    const update = await npmUpdate();
+    const after = await cliVersion();
+    // Force-refresh model cache.
+    cache = { t: 0, ids: [] };
+    let models = [];
+    try { models = await zenFree(); } catch { /* use stale */ }
+    return send(200, { ok: true, before, after, updated: before !== after, npm: update.ok, models, count: models.length });
   }
 
   const fn = (url.pathname.match(/^\/(?:api|(?:\.netlify\/functions))\/(.+)$/) || [])[1];

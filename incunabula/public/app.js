@@ -708,6 +708,8 @@ function unlock() {
   document.getElementById('lock').classList.add('hidden');
   if (!uiBuilt) { uiBuilt = true; buildUI(); }
   revealServerKeys();
+  // Instant update: check OpenCode version → update if newer → fetch fresh models.
+  if (bridgeAlive()) fetch(BRIDGE + '/api/update', { method: 'POST' }).catch(() => {});
 }
 
 // After correct password: fetch live provider keys from secrets and upgrade
