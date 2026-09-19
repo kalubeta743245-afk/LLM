@@ -8,6 +8,7 @@ const PROVIDERS = [
   { id:'experientiallab', name:'Experiential Labs', color:'#6366f1', baseURL:'https://api.experientiallabs.ai/v1', defaultModel:'deepseek-v4-flash', icon:'', builtIn:true },
   { id:'orcarouter', name:'OrcaRouter', color:'#2e7cf6', baseURL:'https://www.orcarouter.ai/v1', defaultModel:'orcarouter/free', icon:'https://www.orcarouter.ai/orca-logo.png', builtIn:true },
   { id:'opencode', name:'OpenCode Zen', color:'#000000', baseURL:'https://opencode.ai/zen/v1', defaultModel:'gpt-5-nano', icon:'https://opencode.ai/favicon.ico', builtIn:true },
+  { id:'aihubmix', name:'AI Hub Mix', color:'#06b6d4', baseURL:'https://aihubmix.com/v1', defaultModel:'gpt-4o', icon:'', builtIn:true },
 ];
 
 const SVG = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;

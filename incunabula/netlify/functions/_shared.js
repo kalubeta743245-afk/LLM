@@ -78,6 +78,14 @@ const PROVIDERS = [
     baseURL: 'https://opencode.ai/zen/v1',
     apiKey: '',
   },
+  {
+    id: 'aihubmix',
+    name: 'AI Hub Mix',
+    tag: 'AH',
+    color: '#06b6d4',
+    baseURL: 'https://aihubmix.com/v1',
+    apiKey: '',
+  },
 ];
 
 function makeClient(provider) {
@@ -114,6 +122,7 @@ function secretFor(id) {
     tokenharbor: 'TOKENHARBOR_API_KEY',
     tokenforge: 'TOKENFORGE_API_KEY',
     experientiallab: 'EXPERIENTIALLAB_API_KEY',
+    aihubmix: 'AIHUBMIX_API_KEY',
     opencode: 'ZEN_KEY',
   };
   const name = map[id];

@@ -80,7 +80,7 @@ export default {
       if (env.SITE_PASSWORD) globalThis.SITE_PASSWORD = env.SITE_PASSWORD;
       if (env.ZEN_KEY) globalThis.ZEN_KEY = env.ZEN_KEY;
       if (env.BRIDGE_URL) globalThis.BRIDGE_URL = env.BRIDGE_URL;
-      for (const k of ['OPENROUTER_API_KEY', 'NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'EXPERIENTIALLAB_API_KEY']) {
+      for (const k of ['OPENROUTER_API_KEY', 'NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'EXPERIENTIALLAB_API_KEY', 'AIHUBMIX_API_KEY']) {
         if (env[k]) globalThis[k] = env[k];
       }
     } catch { /* ignore */ }
