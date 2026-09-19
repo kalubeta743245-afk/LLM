@@ -311,8 +311,10 @@ function buildCard(p) {
   const kr = el('div', 'key-row');
   kr.appendChild(el('span', 'key-lbl', 'Key'));
   if (p.custom && p.apiKey) {
-    // Custom key stays server-side; show masked value only, never copyable.
     kr.appendChild(el('span', 'key-val', mask(p.apiKey)));
+    const kb = el('button', 'copy-btn', 'copy');
+    kb.onclick = () => copy(p.apiKey, kb);
+    kr.appendChild(kb);
   } else if (p.custom) {
     kr.appendChild(el('span', 'key-val', 'no key — free'));
   } else if (p.noAuth) {
