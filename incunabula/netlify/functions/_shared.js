@@ -66,6 +66,15 @@ const PROVIDERS = [
     baseURL: 'https://api.inceptionlabs.ai/v1',
     apiKey: '',
   },
+  {
+    id: 'kilo',
+    name: 'Kilo Gate',
+    tag: 'KG',
+    color: '#ff6a00',
+    baseURL: 'https://api.kilo.ai/api/gateway',
+    apiKey: '',
+    noAuth: true,
+  },
 ];
 
 function makeClient(provider) {
