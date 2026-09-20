@@ -12,16 +12,6 @@ exports.handler = async (event) => {
     }
 
     const started = Date.now();
-    if (provider.localBridge) {
-      // Keyless free tier: list over HTTPS, no key, nothing to install.
-      const { zenFree } = require('./_freebridge');
-      const ids = await zenFree();
-      return {
-        statusCode: 200,
-        headers: cors(),
-        body: JSON.stringify({ ok: true, provider: provider.name, count: ids.length, ms: Date.now() - started, models: ids }),
-      };
-    }
     let ids;
     if (provider.modelsURL) {
       // No-auth providers with a non-OpenAI models format (e.g. Pollinations)

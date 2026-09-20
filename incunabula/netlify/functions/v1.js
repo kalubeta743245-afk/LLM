@@ -113,15 +113,24 @@ async function collectModels() {
       }
     } catch { /* skip failed provider */ }
   }
-  // Inject dynamic OpenCode Zen models (auto-updates when new models release).
-  const openCodeModels = await getOpenCodeModels().catch(() => []);
-  const openCodePid = 'opencode';
-  for (const m of openCodeModels) {
-    if (byModel.has(m) && byModel.get(m).has(openCodePid)) continue;
-    entries.push({ providerId: openCodePid, model: m });
-    if (!byModel.has(m)) byModel.set(m, new Set());
-    byModel.get(m).add(openCodePid);
-  }
+  // Apply per-model visibility: only activated models are served via /v1.
+  try {
+    const vis = await storeGet('model-visibility', {});
+    if (vis && Object.keys(vis).length) {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (vis[entries[i].providerId + '/' + entries[i].model] === false) entries.splice(i, 1);
+      }
+      for (const [key, enabled] of Object.entries(vis)) {
+        if (enabled !== false) continue;
+        const slash = key.indexOf('/');
+        if (slash === -1) continue;
+        const pid = key.slice(0, slash);
+        const name = key.slice(slash + 1);
+        const owners = byModel.get(name);
+        if (owners) owners.delete(pid);
+      }
+    }
+  } catch { /* visibility is optional */ }
   // Apply dedup config: remove disabled providers from byModel.
   try {
     const dedupConfig = await storeGet('model-dedup-config', {});
@@ -301,8 +310,14 @@ exports.handler = async (event) => {
     //   2. full id at the named provider (catalogues with nested ids like
     //      "orcarouter/free" — this is what the site cards send, verbatim)
     //   3. same/closest id at any other provider (cross-provider fallback)
+    try {
+      const vis = await storeGet('model-visibility', {});
+      if (vis && (vis[providerId + '/' + model] === false || vis[providerId + '/' + full] === false)) {
+        return err(404, 'Model "' + full + '" is deactivated');
+      }
+    } catch { /* ignore */ }
     const candidates = [{ provider, model }];
-    if (!provider.localBridge && full !== model) {
+    if (full !== model) {
       candidates.push({ provider, model: full });
     }
     let alternatesLoaded = false;
@@ -319,39 +334,11 @@ exports.handler = async (event) => {
         const alt = findAlternateModel(model, providerId, byModel);
         if (alt) {
           const altProvider = providers.find((p) => p.id === alt.providerId);
-          if (altProvider && !altProvider.localBridge) candidates.push({ provider: altProvider, model: alt.model });
+          if (altProvider) candidates.push({ provider: altProvider, model: alt.model });
         }
         if (ci >= candidates.length) break;
       }
       const cand = candidates[ci++];
-      // CLI-backed free tier can't pipe (no OpenAI endpoint) — adapter instead.
-      if (cand.provider.localBridge) {
-        const r = await chatFn({
-          httpMethod: 'POST', headers: {},
-          body: JSON.stringify({ ...body, providerId: cand.provider.id, model: cand.model }),
-        });
-        const d = JSON.parse(r.body || '{}');
-        if (r.statusCode === 200 && d.ok !== false) {
-          touchKey();
-          return {
-            statusCode: 200,
-            headers: cors(event.headers),
-            body: JSON.stringify({
-              id: d.id || ('chatcmpl-' + Date.now().toString(36)),
-              object: 'chat.completion',
-              created: Math.floor(Date.now() / 1000),
-              model: full,
-              choices: [{ index: 0, message: { role: 'assistant', content: d.content || '' }, finish_reason: d.finishReason || 'stop' }],
-              usage: d.usage || undefined,
-            }),
-          };
-        }
-        if (!modelFailed(r.statusCode, d.error)) {
-          return err(r.statusCode === 200 ? 500 : r.statusCode, d.error || 'Upstream request failed');
-        }
-        lastErr = { status: r.statusCode, msg: d.error };
-        continue;
-      }
       if (body.stream && cand.provider.noAuth) {
         lastErr = { status: 400, msg: 'Streaming is not supported for provider "' + cand.provider.id + '"' };
         continue;

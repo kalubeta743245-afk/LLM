@@ -14,7 +14,3 @@ binding = "MODELLAB_KV"
 id = "51ffb6751cb048fcb72bad15816bb342"
 
 [vars]
-BRIDGE_URL = "https://relevance-privacy-entirely-clubs.trycloudflare.com"
-
-[triggers]
-crons = ["*/50 * * * *"]

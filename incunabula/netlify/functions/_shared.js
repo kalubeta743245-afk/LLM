@@ -2,18 +2,6 @@ const OPENAI = require('openai');
 
 const PROVIDERS = [
   {
-    // OpenCode Local Tunnel: OpenCode Zen free models. List over HTTPS; chat runs on
-    // the desktop server's opencode CLI (locally or via BRIDGE_URL relay).
-    id: 'mysitefree',
-    name: 'OpenCode Local Tunnel',
-    tag: 'MF',
-    color: '#16A34A',
-    baseURL: 'https://opencode.ai/zen/v1',
-    apiKey: '',
-    noAuth: true,
-    localBridge: true,
-  },
-  {
     id: 'tokenrouter',
     name: 'TokenRouter',
     tag: 'TR',
@@ -55,27 +43,11 @@ const PROVIDERS = [
     apiKey: '',
   },
   {
-    id: 'experientiallab',
-    name: 'Experiential Labs',
-    tag: 'XL',
-    color: '#6366f1',
-    baseURL: 'https://api.experientiallabs.ai/v1',
-    apiKey: '',
-  },
-  {
     id: 'orcarouter',
     name: 'OrcaRouter',
     tag: 'OC',
     color: '#f59e0b',
     baseURL: 'https://www.orcarouter.ai/v1',
-    apiKey: '',
-  },
-  {
-    id: 'opencode',
-    name: 'OpenCode Zen',
-    tag: 'OC',
-    color: '#000000',
-    baseURL: 'https://opencode.ai/zen/v1',
     apiKey: '',
   },
   {
@@ -121,9 +93,7 @@ function secretFor(id) {
     orcarouter: 'ORCAROUTER_API_KEY',
     tokenharbor: 'TOKENHARBOR_API_KEY',
     tokenforge: 'TOKENFORGE_API_KEY',
-    experientiallab: 'EXPERIENTIALLAB_API_KEY',
     aihubmix: 'AIHUBMIX_API_KEY',
-    opencode: 'ZEN_KEY',
   };
   const name = map[id];
   if (!name) return '';
@@ -234,38 +204,7 @@ async function getAllProviders() {
   })));
 }
 
-// Dynamically fetch OpenCode Zen models (paid + free) with KV cache.
-// Auto-updates when new models are released — no redeploy needed.
-async function fetchOpenCodeModels() {
-  const CACHE_KEY = 'opencode-models-cache';
-  const CACHE_TTL = 30 * 60 * 1000; // 30 min
-  try {
-    const cached = await storeGet(CACHE_KEY, null);
-    if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && cached.models) {
-      return cached.models;
-    }
-  } catch { /* fetch fresh */ }
-  try {
-    const r = await fetch('https://opencode.ai/zen/v1/models', { headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error('Zen models fetch failed: HTTP ' + r.status);
-    const data = await r.json();
-    const models = (data.data || []).map((m) => m.id).filter(Boolean).sort((a, b) => a.localeCompare(b));
-    if (models.length) {
-      storeSet(CACHE_KEY, { at: Date.now(), models }).catch(() => {});
-    }
-    return models;
-  } catch { /* return empty on failure */ }
-  return [];
-}
-
-// Merge static catalogue with live OpenCode models for /v1/models listing.
-async function getOpenCodeModels() {
-  const live = await fetchOpenCodeModels();
-  const statics = STATIC_MODELS.opencode || [];
-  if (!live.length) return statics;
-  const seen = new Set(live);
-  for (const m of statics) if (!seen.has(m)) { seen.add(m); live.push(m); }
-  return live.sort((a, b) => a.localeCompare(b));
-}
+async function fetchOpenCodeModels() { return []; }
+async function getOpenCodeModels() { return []; }
 
 module.exports = { OPENAI, PROVIDERS, STATIC_MODELS, makeClient, providerFetch, cors, storeGet, storeSet, getAllProviders, secretFor, readTunnelUrl, fetchOpenCodeModels, getOpenCodeModels };
