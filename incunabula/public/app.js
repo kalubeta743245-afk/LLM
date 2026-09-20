@@ -6,8 +6,8 @@ const PROVIDERS = [
   { id:'tokenforge', name:'Token Forge', color:'#ef4444', baseURL:'https://tokenforge.ai.studio/v1', defaultModel:'claude-opus-5' },
   { id:'orcarouter', name:'OrcaRouter', color:'#f59e0b', baseURL:'https://www.orcarouter.ai/v1', defaultModel:'orcarouter/free', icon:'https://www.orcarouter.ai/orca-logo.png' },
   { id:'aihubmix', name:'AI Hub Mix', color:'#06b6d4', baseURL:'https://aihubmix.com/v1', defaultModel:'gpt-4o' },
-  { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'' },
-  { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'' },
+  { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'https://inceptionlabs.ai/favicon.ico' },
+  { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'https://kilo.ai/favicon.ico' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${i}</svg>`;
@@ -70,12 +70,19 @@ function letterTile(p, cls) {
   return t;
 }
 function setLogo(img, p) {
-  if (p.icon) { img.alt = p.name; img.loading = 'lazy'; img.onerror = () => img.replaceWith(letterTile(p, 'card-logo tile')); img.src = p.icon; return; }
+  const fallback = ()=> img.replaceWith(letterTile(p, 'card-logo tile'));
+  if (p.icon) {
+    img.alt = p.name; img.loading = 'lazy';
+    const favs = iconCandidates(p.baseURL);
+    const srcs=[p.icon,...favs]; let i=0;
+    img.onerror = () => { i++; if(i < srcs.length) img.src=srcs[i]; else fallback(); };
+    img.src = srcs[0]; return;
+  }
   const list = iconCandidates(p.baseURL);
-  if (!list.length) { img.replaceWith(letterTile(p, 'card-logo tile')); return; }
+  if (!list.length) { fallback(); return; }
   img.alt = p.name; img.loading = 'lazy';
   let i = 0;
-  img.onerror = () => { i++; if (i < list.length) img.src = list[i]; else img.replaceWith(letterTile(p, 'card-logo tile')); };
+  img.onerror = () => { i++; if (i < list.length) img.src = list[i]; else fallback(); };
   img.src = list[0];
 }
 
@@ -94,17 +101,16 @@ function buildNav() {
     icon.style.borderColor = p.color + '30';
     const letter = (p.name || '?').trim().charAt(0).toUpperCase();
     icon.textContent = letter;
+    const tryIcon = (src, fallbacks=[])=>{
+      icon.textContent=''; const img=el('img','nav-icon-img'); img.alt=''; let idx=-1; const srcs=[src,...fallbacks];
+      img.onerror=()=>{ idx++; if(idx < srcs.length-1){ img.src=srcs[idx+1]; } else { img.remove(); icon.textContent=letter; } };
+      img.src=srcs[0]; icon.appendChild(img);
+    };
     if (p.icon) {
-      const img = el('img', 'nav-icon-img'); img.alt = '';
-      img.onerror = () => { img.remove(); icon.textContent = letter; };
-      img.src = p.icon; icon.textContent = ''; icon.appendChild(img);
+      tryIcon(p.icon, iconCandidates(p.baseURL));
     } else {
       const favs = iconCandidates(p.baseURL);
-      if (favs.length) {
-        const img = el('img', 'nav-icon-img'); img.alt = ''; let fi = 0;
-        img.onerror = () => { fi++; if (fi < favs.length) img.src = favs[fi]; else { img.remove(); icon.textContent = letter; } };
-        img.src = favs[0]; icon.textContent = ''; icon.appendChild(img);
-      }
+      if (favs.length) tryIcon(favs[0], favs.slice(1));
     }
     const nameSpan = el('span', 'nav-name', p.name);
     const badge = el('span', 'nav-badge', '—');
