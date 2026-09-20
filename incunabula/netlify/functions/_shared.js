@@ -58,6 +58,14 @@ const PROVIDERS = [
     baseURL: 'https://aihubmix.com/v1',
     apiKey: '',
   },
+  {
+    id: 'inception',
+    name: 'Inception',
+    tag: 'IN',
+    color: '#ff3b30',
+    baseURL: 'https://api.inceptionlabs.ai/v1',
+    apiKey: '',
+  },
 ];
 
 function makeClient(provider) {
@@ -94,6 +102,7 @@ function secretFor(id) {
     tokenharbor: 'TOKENHARBOR_API_KEY',
     tokenforge: 'TOKENFORGE_API_KEY',
     aihubmix: 'AIHUBMIX_API_KEY',
+    inception: 'INCEPTION_API_KEY',
   };
   const name = map[id];
   if (!name) return '';

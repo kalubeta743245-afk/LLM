@@ -70,7 +70,7 @@ export default {
     try {
       if (env.MODELLAB_KV) globalThis.MODELLAB_KV = env.MODELLAB_KV;
       if (env.SITE_PASSWORD) globalThis.SITE_PASSWORD = env.SITE_PASSWORD;
-      for (const k of ['OPENROUTER_API_KEY', 'NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'AIHUBMIX_API_KEY']) {
+      for (const k of ['OPENROUTER_API_KEY', 'NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'AIHUBMIX_API_KEY', 'INCEPTION_API_KEY']) {
         if (env[k]) globalThis[k] = env[k];
       }
     } catch {}

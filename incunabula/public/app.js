@@ -6,6 +6,7 @@ const PROVIDERS = [
   { id:'tokenforge', name:'Token Forge', color:'#ef4444', baseURL:'https://tokenforge.ai.studio/v1', defaultModel:'claude-opus-5' },
   { id:'orcarouter', name:'OrcaRouter', color:'#f59e0b', baseURL:'https://www.orcarouter.ai/v1', defaultModel:'orcarouter/free', icon:'https://www.orcarouter.ai/orca-logo.png' },
   { id:'aihubmix', name:'AI Hub Mix', color:'#06b6d4', baseURL:'https://aihubmix.com/v1', defaultModel:'gpt-4o' },
+  { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${i}</svg>`;
@@ -89,8 +90,21 @@ function buildNav() {
     const icon = el('div', 'nav-icon-circle');
     icon.style.background = p.color + '18';
     icon.style.color = p.color;
-    icon.textContent = (p.name || '?')[0];
-    if (p.icon) { const img = el('img', 'nav-icon-img'); img.alt = ''; img.onerror = () => img.remove(); img.src = p.icon; icon.innerHTML = ''; icon.appendChild(img); }
+    icon.style.borderColor = p.color + '30';
+    const letter = (p.name || '?').trim().charAt(0).toUpperCase();
+    icon.textContent = letter;
+    if (p.icon) {
+      const img = el('img', 'nav-icon-img'); img.alt = '';
+      img.onerror = () => { img.remove(); icon.textContent = letter; };
+      img.src = p.icon; icon.textContent = ''; icon.appendChild(img);
+    } else {
+      const favs = iconCandidates(p.baseURL);
+      if (favs.length) {
+        const img = el('img', 'nav-icon-img'); img.alt = ''; let fi = 0;
+        img.onerror = () => { fi++; if (fi < favs.length) img.src = favs[fi]; else { img.remove(); icon.textContent = letter; } };
+        img.src = favs[0]; icon.textContent = ''; icon.appendChild(img);
+      }
+    }
     const nameSpan = el('span', 'nav-name', p.name);
     const badge = el('span', 'nav-badge', '—');
     badge.id = 'nav-badge-' + p.id;
@@ -107,7 +121,15 @@ function addCustomToNav(p) {
   const icon = el('div', 'nav-icon-circle');
   icon.style.background = (p.color || '#60A5FA') + '18';
   icon.style.color = p.color || '#60A5FA';
-  icon.textContent = (p.name || '?')[0];
+  icon.style.borderColor = (p.color || '#60A5FA') + '30';
+  const letter = (p.name || '?').trim().charAt(0).toUpperCase();
+  icon.textContent = letter;
+  const favs = iconCandidates(p.baseURL);
+  if (favs.length) {
+    const img = el('img', 'nav-icon-img'); img.alt=''; let fi=0;
+    img.onerror = () => { fi++; if (fi < favs.length) img.src = favs[fi]; else { img.remove(); icon.textContent = letter; } };
+    img.src = favs[0]; icon.textContent=''; icon.appendChild(img);
+  }
   const nameSpan = el('span', 'nav-name', p.name);
   item.append(icon, nameSpan);
   item.addEventListener('click', () => { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); item.classList.add('active'); document.getElementById('card-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeMobileNav(); });
@@ -380,6 +402,70 @@ async function verifyPassword(pw) {
   try { const r = await fetch(api('auth'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) }); const d = await r.json().catch(() => ({})); return !!(r.ok && d.ok); } catch { return false; }
 }
 
+async function keysCall(action, extra){
+  const r = await fetch(api('api-keys'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,password:localStorage.getItem('mlab_pw')||'',...(extra||{})})});
+  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||'HTTP '+r.status); return d;
+}
+
+function wireGateway(){
+  const baseInput = document.getElementById('gw-base');
+  const keyInput = document.getElementById('gw-key');
+  if(!baseInput||!keyInput) return;
+  baseInput.value = location.origin + '/v1';
+  async function load(){
+    try{ const d = await keysCall('ensure'); keyInput.value = (d.key&&d.key.key)||''; } catch{ keyInput.value=''; }
+  }
+  load();
+  document.getElementById('gw-base-copy')?.addEventListener('click', (e)=>copy(baseInput.value, e.currentTarget));
+  document.getElementById('gw-key-copy')?.addEventListener('click', (e)=>copy(keyInput.value, e.currentTarget));
+  document.getElementById('gw-copy-all')?.addEventListener('click', async (e)=>{
+    const btn=e.currentTarget;
+    try{
+      const d = await keysCall('provider-keys');
+      const k = await keysCall('ensure');
+      const uniKey=(k&&k.key&&k.key.key)?k.key.key:'';
+      const uniBase=d.universal_base||location.origin+'/v1';
+      const blocks=(d.providers||[]).map(p=>'# '+p.name+'\nBASE_URL='+p.baseURL+'\nAPI_KEY='+(p.key||'(none)'));
+      const text='UNIVERSAL_BASE='+uniBase+'\nUNIVERSAL_KEY='+uniKey+(blocks.length?'\n\n'+blocks.join('\n\n'):'');
+      copy(text, btn);
+    }catch(ex){ copy(baseInput.value+'\n'+keyInput.value, btn); }
+  });
+}
+
+function wireAllProviders(){
+  const dlg=document.getElementById('all-dialog'); if(!dlg) return;
+  const list=document.getElementById('all-list');
+  const err=document.getElementById('all-err');
+  const copyAllBtn=document.getElementById('all-copy');
+  let cache={universal_base:'',providers:[]};
+  const blockFor=(p)=>'# '+(p.name||p.id)+'\nBASE_URL='+(p.baseURL||'')+'\nAPI_KEY='+(p.key||'(none)');
+  function render(providers){
+    list.innerHTML='';
+    if(!providers.length){ const empty=el('div',null,'No providers found.'); empty.style.cssText='font-size:13px;color:var(--text-3)'; list.appendChild(empty); return; }
+    providers.forEach(p=>{
+      const row=el('div'); row.style.cssText='border:1px solid var(--border);border-radius:var(--r-md);padding:8px 10px;background:var(--surface-raised)';
+      const top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px';
+      const nameEl=el('span',null,p.name||p.id); nameEl.style.cssText='font-weight:600;font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      const cb=el('button','copy-btn','copy'); cb.onclick=()=>copy(blockFor(p),cb);
+      top.append(nameEl,cb);
+      const baseEl=el('div',null,p.baseURL||''); baseEl.style.cssText='font-family:var(--mono);font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px';
+      const keyEl=el('div',null,p.key?mask(p.key):'(none)'); keyEl.style.cssText='font-family:var(--mono);font-size:11px;color:var(--text-4);margin-top:2px;word-break:break-all';
+      row.append(top,baseEl,keyEl); list.appendChild(row);
+    });
+  }
+  async function load(){
+    err.textContent=''; list.innerHTML='<div style="font-size:13px;color:var(--text-3)">Loading…</div>';
+    try{ const d=await keysCall('provider-keys'); cache.universal_base=d.universal_base||''; cache.providers=d.providers||[]; render(cache.providers);}catch(e){ list.innerHTML=''; err.textContent=e.message; }
+  }
+  document.getElementById('allprov-btn')?.addEventListener('click', ()=>{ load(); dlg.showModal(); });
+  copyAllBtn?.addEventListener('click', async ()=>{
+    err.textContent='';
+    try{ const k=await keysCall('ensure'); const uniKey=(k&&k.key&&k.key.key)?k.key.key:''; const text='UNIVERSAL_BASE='+(cache.universal_base||'')+'\nUNIVERSAL_KEY='+uniKey+(cache.providers.length?'\n\n'+cache.providers.map(blockFor).join('\n\n'):''); copy(text, copyAllBtn);}catch(ex){ err.textContent=ex.message; }
+  });
+  document.getElementById('all-close')?.addEventListener('click', ()=>dlg.close());
+  dlg.addEventListener('click',(e)=>{ if(e.target===dlg) dlg.close(); });
+}
+
 function buildUI() {
   buildNav();
   const grid = $('#cards');
@@ -391,6 +477,8 @@ function buildUI() {
       addCustomToNav(c);
     }
   }).catch(() => {});
+  wireGateway();
+  wireAllProviders();
   wireDialog();
 }
 

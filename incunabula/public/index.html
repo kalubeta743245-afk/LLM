@@ -25,12 +25,16 @@ html{font-family:var(--sans);-webkit-font-smoothing:antialiased;font-size:14px}
 body{background:var(--bg);color:var(--text);line-height:1.5}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .shell{display:flex;min-height:100vh}
-.main{flex:1;margin-left:220px;padding:24px 32px 60px;max-width:1200px}
-.page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
-.page-title{font-size:22px;font-weight:600;letter-spacing:-.022em;color:var(--text)}
-.head-right{display:flex;align-items:center;gap:8px}
-.cards{display:flex;flex-direction:column;gap:12px}
-@media(min-width:1100px){.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}}
+.main{flex:1;margin-left:220px;padding:28px 32px 64px;max-width:1200px}
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
+.page-title{font-size:24px;font-weight:600;letter-spacing:-.022em;color:var(--text)}
+.head-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gateway-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px 18px;margin-bottom:18px;display:flex;flex-direction:column;gap:10px}
+.gateway-row{display:flex;gap:8px;align-items:center}
+.gateway-row .input{flex:1}
+.gateway-label{font-size:11px;font-weight:600;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);min-width:70px}
+.cards{display:flex;flex-direction:column;gap:16px}
+@media(min-width:1100px){.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}}
 .sidebar{width:220px;background:var(--bg-subtle);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;z-index:10;display:flex;flex-direction:column}
 .sidebar-head{padding:20px 16px;border-bottom:1px solid var(--border)}
 .logo{font-size:17px;font-weight:600;letter-spacing:-.02em;color:var(--text)}
@@ -41,8 +45,8 @@ body{background:var(--bg);color:var(--text);line-height:1.5}
 .nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-md);font-size:13px;font-weight:500;color:var(--text-3);cursor:pointer;border:1px solid transparent;transition:border-color 120ms,background-color 120ms}
 .nav-item:hover{background:var(--surface);border-color:var(--border)}
 .nav-item.active{background:var(--surface);color:var(--text);border-color:var(--border-strong)}
-.nav-icon-circle{width:28px;height:28px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;color:var(--text);flex-shrink:0;overflow:hidden;border:1px solid var(--border)}
-.nav-icon-img{width:18px;height:18px;object-fit:contain}
+.nav-icon-circle{width:28px;height:28px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;overflow:hidden;border:1px solid var(--border);background:var(--surface-raised)}
+.nav-icon-img{width:18px;height:18px;object-fit:contain;display:block}
 .nav-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-badge{font-size:11px;font-family:var(--mono);color:var(--text-4);min-width:20px;text-align:right}
 .sidebar-foot{padding:12px 16px;border-top:1px solid var(--border);font-size:11px;font-family:var(--mono);color:var(--text-4);display:flex;align-items:center;gap:7px}
@@ -51,8 +55,8 @@ body{background:var(--bg);color:var(--text);line-height:1.5}
 .mobile-menu{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--r-md);border:1px solid var(--border-strong);background:transparent;cursor:pointer;color:var(--text);flex-shrink:0}
 .mobile-menu svg{width:18px;height:18px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
-.card-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)}
-.card-body{padding:14px 16px 16px}
+.card-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.card-body{padding:16px 18px 18px}
 .card-logo{width:36px;height:36px;border-radius:var(--r-md);object-fit:contain;flex-shrink:0;border:1px solid var(--border);background:var(--surface-raised)}
 .card-logo.tile{display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:600;font-size:15px}
 .card-info{flex:1;min-width:0}
@@ -171,8 +175,15 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
         <button class="mobile-menu" id="mobile-menu-btn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
+        <button class="btn btn-ghost" id="allprov-btn">All providers</button>
         <button class="btn btn-primary" id="add-prov-btn">+ Add provider</button>
       </div>
+    </div>
+    <div class="gateway-card" id="gateway-card">
+      <div style="font-size:12px;font-weight:600;letter-spacing:-.01em;color:var(--text)">Universal Gateway</div>
+      <div class="gateway-row"><span class="gateway-label">Base URL</span><input class="input" id="gw-base" readonly style="font-family:var(--mono);font-size:12px"><button class="btn btn-ghost" id="gw-base-copy" style="flex-shrink:0">Copy</button></div>
+      <div class="gateway-row"><span class="gateway-label">API Key</span><input class="input" id="gw-key" readonly style="font-family:var(--mono);font-size:12px"><button class="btn btn-ghost" id="gw-key-copy" style="flex-shrink:0">Copy</button></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-ghost" id="gw-copy-all" style="flex:1;justify-content:center">Copy all — universal + every provider</button></div>
     </div>
     <div class="cards" id="cards"></div>
   </main>
@@ -210,6 +221,13 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <div class="lock-err" id="lock-err"></div>
   </div>
 </div>
-<script src="app.js?v=50"></script>
+<dialog id="all-dialog">
+  <div class="dlg-title">All providers</div>
+  <div style="display:flex;gap:8px;margin:10px 0 12px"><button class="btn btn-ghost" id="all-copy" style="flex:1;justify-content:center">Copy all</button></div>
+  <div id="all-list" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto"></div>
+  <div class="dlg-err" id="all-err"></div>
+  <div class="btn-row"><button class="btn btn-ghost" id="all-close" style="flex:1;justify-content:center">Close</button></div>
+</dialog>
+<script src="app.js?v=51"></script>
 </body>
 </html>
