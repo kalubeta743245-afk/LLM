@@ -182,18 +182,6 @@ function buildNav() {
     nav.appendChild(item);
   });
 
-  // Model Manager nav item
-  const dedupItem = el('div', 'nav-item');
-  dedupItem.dataset.pid = 'dedup';
-  const dedupName = el('span', null, 'Model Manager');
-  dedupItem.append(dedupName);
-  dedupItem.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    dedupItem.classList.add('active');
-    document.getElementById('card-dedup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    closeMobileNav();
-  });
-  nav.appendChild(dedupItem);
 }
 
 function addCustomToNav(p) {
@@ -258,10 +246,13 @@ function openMobileNav() {
 }
 
 /* ─── Provider card ─── */
+const FREE_RE = /free|pickle|:free$/i;
+function isFreeModel(id) { return FREE_RE.test(id); }
+
 function buildCard(p) {
   const card = el('div', 'card');
   card.id = 'card-' + p.id;
-  const st = { all: [], sel: null, search: null };
+  const st = { all: [], filtered: [], freeOnly: true, sel: null, search: null };
 
   // header
   const header = el('div', 'card-head');
@@ -367,7 +358,7 @@ function buildCard(p) {
   // body
   const body = el('div', 'card-body');
 
-  // model: search + select + copy
+  // model: search + free toggle + select + copy
   const modelField = el('div', 'field');
   modelField.appendChild(el('label', 'field-label', 'Model'));
   const si = el('input', 'input');
@@ -375,6 +366,17 @@ function buildCard(p) {
   si.disabled = true;
   si.style.marginBottom = '6px';
   st.search = si;
+  const freeRow = el('div', 'model-row');
+  freeRow.style.cssText = 'justify-content:space-between;margin-bottom:6px';
+  const freeLabel = el('label', null, 'Free only');
+  freeLabel.style.cssText = 'font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none';
+  const freeCb = el('input');
+  freeCb.type = 'checkbox';
+  freeCb.checked = true;
+  freeCb.style.cssText = 'accent-color:var(--accent);cursor:pointer';
+  freeLabel.prepend(freeCb);
+  st.freeCb = freeCb;
+  freeRow.appendChild(freeLabel);
   const sel = el('select', 'select');
   sel.appendChild(el('option', null, 'Loading…'));
   sel.disabled = true;
@@ -386,7 +388,7 @@ function buildCard(p) {
   modelCopy.title = 'Copy model name';
   modelCopy.onclick = () => { if (sel.value) copy(sel.value, modelCopy); };
   innerRow.appendChild(modelCopy);
-  modelField.append(si, innerRow);
+  modelField.append(si, freeRow, innerRow);
 
   // prompt: pills + textarea
   const PROMPT_PRESETS = {
@@ -436,15 +438,19 @@ function buildCard(p) {
   card.append(header, kr, ...(tunnelRow ? [tunnelRow] : []), body);
 
   // search handler
-  si.addEventListener('input', () => {
+  function applyFilter() {
     const q = si.value.toLowerCase();
-    const filtered = q ? st.all.filter(m => m.toLowerCase().includes(q)) : st.all;
+    let pool = st.freeOnly ? st.all.filter(m => isFreeModel(m)) : st.all;
+    if (q) pool = pool.filter(m => m.toLowerCase().includes(q));
+    st.filtered = pool;
     sel.innerHTML = '';
-    if (!filtered.length) { sel.appendChild(el('option', null, 'no match')); return; }
-    for (const m of filtered) { const o = el('option', null, m); o.value = m; sel.appendChild(o); }
+    if (!pool.length) { sel.appendChild(el('option', null, q ? 'no match' : 'no free models')); return; }
+    for (const m of pool) { const o = el('option', null, m); o.value = m; sel.appendChild(o); }
     const prev = sel.dataset.prev;
-    if (prev && filtered.includes(prev)) sel.value = prev;
-  });
+    if (prev && pool.includes(prev)) sel.value = prev;
+  }
+  si.addEventListener('input', applyFilter);
+  freeCb.addEventListener('change', () => { st.freeOnly = freeCb.checked; applyFilter(); });
 
   loadBtn.addEventListener('click', () => doLoad());
   testBtn.addEventListener('click', () => doTest());
@@ -457,16 +463,15 @@ function buildCard(p) {
     try {
       const d = await callFn('models', { providerId: p.id });
       st.all = d.models;
-      sel.innerHTML = '';
-      for (const m of d.models) { const o = el('option', null, m); o.value = m; sel.appendChild(o); }
-      if (p.defaultModel && d.models.includes(p.defaultModel)) sel.value = p.defaultModel;
+      st.freeOnly = freeCb.checked;
+      applyFilter();
+      if (p.defaultModel && st.filtered.includes(p.defaultModel)) sel.value = p.defaultModel;
       sel.dataset.prev = sel.value;
       sel.disabled = false; si.disabled = false; si.value = '';
       badge.className = 'status ok'; badge.textContent = p.name;
       res.className = 'result placeholder'; res.textContent = 'Pick a model and hit Test.';
       const nb = document.getElementById('nav-badge-' + p.id);
       if (nb) nb.textContent = d.count;
-      // Auto-check tunnel status for OpenCode Local Tunnel
       if (p.id === 'mysitefree') {
         const tcheck = document.querySelector('#tunnel-row-' + p.id + ' .icon-btn');
         if (tcheck) tcheck.click();
@@ -480,7 +485,7 @@ function buildCard(p) {
 
   async function doTest() {
     const model = sel.value;
-    if (!model || model === 'no match' || model === 'Loading…') return;
+    if (!model || model === 'no match' || model === 'no free models' || model === 'Loading…') return;
     sel.dataset.prev = model;
     testBtn.disabled = true;
     badge.hidden = false; badge.className = 'status load'; badge.textContent = 'testing…';
@@ -506,110 +511,6 @@ function buildCard(p) {
   return card;
 }
 
-/* ─── Model Manager card ─── */
-function buildDedupCard() {
-  const card = el('div', 'card');
-  card.id = 'card-dedup';
-  card.style.cssText = 'grid-column:1/-1';
-
-  const header = el('div', 'card-head');
-  header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)';
-  const title = el('div', 'card-info');
-  title.appendChild(el('div', 'card-name', 'Model Manager'));
-  const countBadge = el('span', 'status', 'loading…');
-  countBadge.style.marginLeft = '8px';
-  header.append(title, countBadge);
-
-  const body = el('div', 'card-body');
-  body.style.cssText = 'padding:16px 20px 20px';
-  const list = el('div', 'dedup-list');
-  body.appendChild(list);
-
-  card.append(header, body);
-
-  async function load() {
-    countBadge.className = 'status load';
-    countBadge.textContent = 'loading…';
-    list.innerHTML = '';
-    try {
-      const d = await callGet('model-dedup');
-      const groups = d.groups || [];
-      countBadge.textContent = groups.length + ' duplicate' + (groups.length !== 1 ? 's' : '');
-      countBadge.className = 'status' + (groups.length ? ' ok' : '');
-
-      if (!groups.length) {
-        list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center">No duplicate models found. Each model is available on only one provider.</div>';
-        return;
-      }
-
-      for (const g of groups) {
-        const row = el('div', 'dedup-row');
-        const nameEl = el('span', 'dedup-model', g.model);
-        nameEl.title = g.model;
-        row.appendChild(nameEl);
-        const chipRow = el('div', 'dedup-chips');
-        for (const p of g.providers) {
-          const chip = el('button', 'dedup-chip');
-          chip.dataset.model = g.model;
-          chip.dataset.pid = p.id;
-          chip.style.cssText = 'background:' + (p.color || '#666') + '22;border:1px solid ' + (p.color || '#666') + '66;color:' + (p.color || '#666');
-          if (p.name) chip.title = p.name + (p.enabled ? ' (enabled)' : ' (disabled)');
-          chip.textContent = p.name || p.id;
-          if (!p.enabled) {
-            chip.classList.add('dedup-chip-off');
-          }
-          chip.addEventListener('click', () => toggleChip(chip));
-          chipRow.appendChild(chip);
-        }
-        row.appendChild(chipRow);
-        list.appendChild(row);
-      }
-    } catch (e) {
-      countBadge.textContent = 'error';
-      countBadge.className = 'status err';
-      list.innerHTML = '<div class="result err">✗ ' + esc(e.message) + '</div>';
-    }
-  }
-
-  async function toggleChip(chip) {
-    const model = chip.dataset.model;
-    const pid = chip.dataset.pid;
-    const wasOn = !chip.classList.contains('dedup-chip-off');
-    // Optimistic UI
-    chip.classList.toggle('dedup-chip-off', wasOn);
-    chip.style.opacity = wasOn ? '0.4' : '1';
-    chip.style.filter = wasOn ? 'grayscale(1)' : '';
-    try {
-      const d = await callMethod('model-dedup', 'POST', { model, providerId: pid, enabled: !wasOn });
-      // Rebuild chips from response
-      if (d.ok && d.group) {
-        const row = chip.closest('.dedup-row');
-        const chipRow = row.querySelector('.dedup-chips');
-        chipRow.innerHTML = '';
-        for (const p of d.group.providers) {
-          const c = el('button', 'dedup-chip');
-          c.dataset.model = d.group.model;
-          c.dataset.pid = p.id;
-          c.style.cssText = 'background:' + (p.color || '#666') + '22;border:1px solid ' + (p.color || '#666') + '66;color:' + (p.color || '#666');
-          if (p.name) c.title = p.name + (p.enabled ? ' (enabled)' : ' (disabled)');
-          c.textContent = p.name || p.id;
-          if (!p.enabled) c.classList.add('dedup-chip-off');
-          c.addEventListener('click', () => toggleChip(c));
-          chipRow.appendChild(c);
-        }
-      }
-    } catch {
-      // Revert on failure
-      chip.classList.toggle('dedup-chip-off', !wasOn);
-      chip.style.opacity = wasOn ? '1' : '0.4';
-      chip.style.filter = wasOn ? '' : 'grayscale(1)';
-    }
-  }
-
-  load();
-  return card;
-}
-
 /* ─── Edit dialog ─── */
 function openEditDialog(p) {
   const dlg = document.getElementById('prov-dialog');
@@ -621,6 +522,7 @@ function openEditDialog(p) {
   const saveBtn = document.getElementById('prov-save');
   const err = document.getElementById('prov-err');
 
+  _dialogMode = 'edit';
   title.textContent = 'Edit provider';
   if (sub) sub.textContent = 'Update this shared provider for all visitors.';
   nameI.value = p.name;
@@ -628,15 +530,6 @@ function openEditDialog(p) {
   keyI.value = p.apiKey || '';
   err.textContent = '';
   saveBtn.disabled = false; saveBtn.textContent = 'Save changes';
-
-  const origSubmit = dlg._editSubmit;
-  if (origSubmit) saveBtn.removeEventListener('click', origSubmit);
-
-  function cleanup() {
-    title.textContent = 'Add shared provider';
-    sub.textContent = 'Visible to every visitor. Any OpenAI-compatible endpoint.';
-    if (origSubmit) saveBtn.addEventListener('click', origSubmit);
-  }
 
   const handler = async (e) => {
     e.preventDefault();
@@ -648,7 +541,6 @@ function openEditDialog(p) {
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     try {
       await callMethod('custom-providers', 'PUT', { id: p.id, name, baseURL, apiKey: keyI.value.trim() });
-      cleanup();
       dlg.close();
       location.reload();
     } catch (ex) {
@@ -656,7 +548,9 @@ function openEditDialog(p) {
       saveBtn.disabled = false; saveBtn.textContent = 'Save changes';
     }
   };
-  saveBtn.addEventListener('click', handler, { once: true });
+  if (dlg._editHandler) saveBtn.removeEventListener('click', dlg._editHandler);
+  dlg._editHandler = handler;
+  saveBtn.addEventListener('click', handler);
   dlg.showModal();
   nameI.focus();
 }
@@ -689,8 +583,6 @@ function buildUI() {
       addCustomToNav(c);
     }
   }).catch(() => {});
-  // Model Manager card (dedup)
-  grid.appendChild(buildDedupCard());
   // Visitor count
   callGet('visits').then((v) => {
     if (v && v.ok) document.getElementById('visits').innerHTML = `<b>${v.count}</b> visitors`;
@@ -821,6 +713,8 @@ function wireAll() {
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 
+let _dialogMode = 'add'; // 'add' or 'edit'
+
 function wireDialog() {
   const dlg = document.getElementById('prov-dialog');
   const err = document.getElementById('prov-err');
@@ -832,6 +726,7 @@ function wireDialog() {
   const sub = dlg.querySelector('.dlg-sub');
 
   function reset() {
+    _dialogMode = 'add';
     title.textContent = 'Add provider';
     if (sub) sub.textContent = '';
     err.textContent = '';
@@ -845,6 +740,7 @@ function wireDialog() {
 
   const addHandler = async (e) => {
     e.preventDefault();
+    if (_dialogMode === 'edit') return; // edit mode has its own handler
     const name = nameI.value.trim();
     const baseURL = baseI.value.trim();
     if (name.length < 2 || name.length > 40) { err.textContent = 'Name must be 2–40 characters.'; nameI.focus(); return; }
