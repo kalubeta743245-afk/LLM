@@ -131,7 +131,9 @@ function addCustomToNav(p) {
     img.src = favs[0]; icon.textContent=''; icon.appendChild(img);
   }
   const nameSpan = el('span', 'nav-name', p.name);
-  item.append(icon, nameSpan);
+  const badge = el('span', 'nav-badge', '—');
+  badge.id = 'nav-badge-' + p.id;
+  item.append(icon, nameSpan, badge);
   item.addEventListener('click', () => { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); item.classList.add('active'); document.getElementById('card-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeMobileNav(); });
   nav.appendChild(item);
 }
