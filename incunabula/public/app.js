@@ -8,6 +8,7 @@ const PROVIDERS = [
   { id:'aihubmix', name:'AI Hub Mix', color:'#06b6d4', baseURL:'https://aihubmix.com/v1', defaultModel:'gpt-4o' },
   { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'https://inceptionlabs.ai/favicon.ico' },
   { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'https://kilo.ai/favicon.ico' },
+  { id:'phoenixgrove', name:'Phoenix Grove', color:'#e11d48', baseURL:'https://api.pgsgrove.com/v1', defaultModel:'deepseek-v4-flash', icon:'https://www.google.com/s2/favicons?domain=pgsgrove.com&sz=128' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;
