@@ -1,6 +1,18 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+
+// Load provider API keys from workspace .env (parent) then local .env.
+// Strip parent PORT so this lab always binds MLAB_PORT / 8888.
+try {
+  const dotenv = require('dotenv');
+  const parent = dotenv.config({ path: path.join(__dirname, '..', '.env') });
+  if (parent.parsed && parent.parsed.PORT) delete process.env.PORT;
+  dotenv.config({ path: path.join(__dirname, '.env') });
+} catch (e) {
+  console.warn('env load skipped:', e.message);
+}
+
 const { cors } = require('./netlify/functions/_shared');
 const modelsFn = require('./netlify/functions/models');
 const chatFn = require('./netlify/functions/chat');
@@ -9,8 +21,9 @@ const visitsFn = require('./netlify/functions/visits');
 const customFn = require('./netlify/functions/custom-providers');
 const v1Fn = require('./netlify/functions/v1');
 const keysFn = require('./netlify/functions/api-keys');
+const visFn = require('./netlify/functions/model-visibility');
 
-const PORT = process.env.PORT || 8888;
+const PORT = process.env.MLAB_PORT || 8888;
 const PUBLIC = path.join(__dirname, 'public');
 
 const MIME = {
@@ -23,7 +36,16 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-const FNS = { models: modelsFn.handler, chat: chatFn.handler, auth: authFn.handler, visits: visitsFn.handler, 'custom-providers': customFn.handler, v1: v1Fn.handler, 'api-keys': keysFn.handler };
+const FNS = {
+  models: modelsFn.handler,
+  chat: chatFn.handler,
+  auth: authFn.handler,
+  visits: visitsFn.handler,
+  'custom-providers': customFn.handler,
+  v1: v1Fn.handler,
+  'api-keys': keysFn.handler,
+  'model-visibility': visFn.handler,
+};
 
 function readBody(req) {
   return new Promise((resolve) => {

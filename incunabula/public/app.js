@@ -10,15 +10,35 @@ const PROVIDERS = [
   { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'https://kilo.ai/favicon.ico' },
 ];
 
-const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${i}</svg>`;
+const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;
 const ICON = {
-  bolt: SVG('<polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/>'),
+  bolt: SVG('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
   copy: SVG('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
   reload: SVG('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'),
-  trash: SVG('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
+  trash: SVG('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>'),
   edit: SVG('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
-  plus: SVG('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
   check: SVG('<polyline points="20 6 9 17 4 12"/>'),
+  search: SVG('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'),
+  plus: SVG('<path d="M12 5v14"/><path d="M5 12h14"/>'),
+  key: SVG('<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>'),
+  lock: SVG('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+  unlock: SVG('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>'),
+  terminal: SVG('<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'),
+  layers: SVG('<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'),
+  github: SVG('<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>'),
+  external: SVG('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'),
+  menu: SVG('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>'),
+  x: SVG('<path d="M18 6L6 18"/><path d="M6 6l12 12"/>'),
+  zap: SVG('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
+  shield: SVG('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+  refresh: SVG('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'),
+  power: SVG('<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>'),
+  book: SVG('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
+  cpu: SVG('<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/>'),
+  radio: SVG('<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/>'),
+  eye: SVG('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: SVG('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'),
+  copyCheck: SVG('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/><polyline points="9 14 11 16 15 12"/>'),
 };
 
 const API_BASE = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.hostname.endsWith('.trycloudflare.com'))
@@ -45,12 +65,23 @@ const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) 
 const esc = s => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
 const mask = k => k.length > 16 ? k.slice(0, 8) + '…' + k.slice(-6) : k;
 
+let _toastTimer = null;
+function toast(msg, kind) {
+  const t = document.getElementById('toast'); if (!t) return;
+  t.textContent = msg;
+  t.className = kind ? kind : '';
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
 function copy(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
     const orig = btn.innerHTML;
     btn.innerHTML = ICON.check;
     setTimeout(() => btn.innerHTML = orig, 800);
-  });
+    toast('Copied', 'ok');
+  }).catch(() => toast('Copy failed', 'err'));
 }
 
 function iconCandidates(baseURL) {
@@ -64,216 +95,303 @@ function iconCandidates(baseURL) {
   } catch {}
   return out;
 }
-function letterTile(p, cls) {
-  const t = el('div', cls, (p.name || '?').trim().charAt(0).toUpperCase());
-  t.style.background = p.color || '#141414';
-  return t;
-}
-function setLogo(img, p) {
-  const fallback = ()=> img.replaceWith(letterTile(p, 'card-logo tile'));
-  if (p.icon) {
-    img.alt = p.name; img.loading = 'lazy';
-    const favs = iconCandidates(p.baseURL);
-    const srcs=[p.icon,...favs]; let i=0;
-    img.onerror = () => { i++; if(i < srcs.length) img.src=srcs[i]; else fallback(); };
-    img.src = srcs[0]; return;
-  }
-  const list = iconCandidates(p.baseURL);
-  if (!list.length) { fallback(); return; }
-  img.alt = p.name; img.loading = 'lazy';
-  let i = 0;
-  img.onerror = () => { i++; if (i < list.length) img.src = list[i]; else fallback(); };
-  img.src = list[0];
+
+function fillMonogram(box, p) {
+  const letter = (p.name || '?').trim().charAt(0).toUpperCase();
+  box.style.color = p.color || '#F2F0EB';
+  box.style.borderColor = (p.color || '#fff') + '55';
+  box.style.background = (p.color || '#fff') + '14';
+  box.textContent = letter;
+  const tryIcon = (srcs) => {
+    if (!srcs.length) return;
+    box.textContent = '';
+    const img = el('img'); img.alt = '';
+    let i = 0;
+    img.onerror = () => { i++; if (i < srcs.length) img.src = srcs[i]; else { img.remove(); box.textContent = letter; } };
+    img.src = srcs[0];
+    box.appendChild(img);
+  };
+  const list = p.icon ? [p.icon, ...iconCandidates(p.baseURL)] : iconCandidates(p.baseURL);
+  tryIcon(list);
 }
 
-/* ─── Sidebar ─── */
+/* ─── Left sidebar nav ─── */
 let allProviders = [];
+function navItem(p, active) {
+  const item = el('button', 'nav-item' + (active ? ' active' : ''));
+  item.type = 'button';
+  item.dataset.pid = p.id;
+  const ico = el('span', 'nav-ico');
+  const letter = (p.name || '?').trim().charAt(0).toUpperCase();
+  ico.style.color = p.color || '#B8B5AE';
+  ico.style.background = (p.color || '#fff') + '18';
+  ico.style.borderColor = (p.color || '#fff') + '30';
+  ico.textContent = letter;
+  if (p.icon) {
+    ico.textContent = '';
+    const img = el('img'); img.alt = '';
+    let i = 0;
+    const srcs = [p.icon, ...iconCandidates(p.baseURL)];
+    img.onerror = () => { i++; if (i < srcs.length) img.src = srcs[i]; else { img.remove(); ico.textContent = letter; } };
+    img.src = srcs[0];
+    ico.appendChild(img);
+  } else {
+    const favs = iconCandidates(p.baseURL);
+    if (favs.length) {
+      ico.textContent = '';
+      const img = el('img'); img.alt = '';
+      let i = 0;
+      img.onerror = () => { i++; if (i < favs.length) img.src = favs[i]; else { img.remove(); ico.textContent = letter; } };
+      img.src = favs[0];
+      ico.appendChild(img);
+    }
+  }
+  const name = el('span', 'nav-name', p.name);
+  const badge = el('span', 'nav-badge', '—');
+  badge.id = 'nav-badge-' + p.id;
+  item.append(ico, name, badge);
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('card-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    closeSidebar();
+  });
+  return item;
+}
 function buildNav() {
   const nav = $('#nav');
   nav.innerHTML = '';
   allProviders = [...PROVIDERS];
-  allProviders.forEach((p, i) => {
-    const item = el('div', 'nav-item' + (i === 0 ? ' active' : ''));
-    item.dataset.pid = p.id;
-    const icon = el('div', 'nav-icon-circle');
-    icon.style.background = p.color + '18';
-    icon.style.color = p.color;
-    icon.style.borderColor = p.color + '30';
-    const letter = (p.name || '?').trim().charAt(0).toUpperCase();
-    icon.textContent = letter;
-    const tryIcon = (src, fallbacks=[])=>{
-      icon.textContent=''; const img=el('img','nav-icon-img'); img.alt=''; let idx=-1; const srcs=[src,...fallbacks];
-      img.onerror=()=>{ idx++; if(idx < srcs.length-1){ img.src=srcs[idx+1]; } else { img.remove(); icon.textContent=letter; } };
-      img.src=srcs[0]; icon.appendChild(img);
-    };
-    if (p.icon) {
-      tryIcon(p.icon, iconCandidates(p.baseURL));
-    } else {
-      const favs = iconCandidates(p.baseURL);
-      if (favs.length) tryIcon(favs[0], favs.slice(1));
-    }
-    const nameSpan = el('span', 'nav-name', p.name);
-    const badge = el('span', 'nav-badge', '—');
-    badge.id = 'nav-badge-' + p.id;
-    item.append(icon, nameSpan, badge);
-    item.addEventListener('click', () => { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); item.classList.add('active'); document.getElementById('card-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeMobileNav(); });
-    nav.appendChild(item);
-  });
+  allProviders.forEach((p, i) => nav.appendChild(navItem(p, i === 0)));
 }
 function addCustomToNav(p) {
   allProviders.push(p);
-  const nav = $('#nav');
-  const item = el('div', 'nav-item');
-  item.dataset.pid = p.id;
-  const icon = el('div', 'nav-icon-circle');
-  icon.style.background = (p.color || '#60A5FA') + '18';
-  icon.style.color = p.color || '#60A5FA';
-  icon.style.borderColor = (p.color || '#60A5FA') + '30';
-  const letter = (p.name || '?').trim().charAt(0).toUpperCase();
-  icon.textContent = letter;
-  const favs = iconCandidates(p.baseURL);
-  if (favs.length) {
-    const img = el('img', 'nav-icon-img'); img.alt=''; let fi=0;
-    img.onerror = () => { fi++; if (fi < favs.length) img.src = favs[fi]; else { img.remove(); icon.textContent = letter; } };
-    img.src = favs[0]; icon.textContent=''; icon.appendChild(img);
-  }
-  const nameSpan = el('span', 'nav-name', p.name);
-  const badge = el('span', 'nav-badge', '—');
-  badge.id = 'nav-badge-' + p.id;
-  item.append(icon, nameSpan, badge);
-  item.addEventListener('click', () => { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); item.classList.add('active'); document.getElementById('card-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeMobileNav(); });
-  nav.appendChild(item);
+  $('#nav').appendChild(navItem({ ...p, color: p.color || '#60A5FA' }, false));
 }
 const spy = new IntersectionObserver((es) => {
-  es.forEach((e) => { if (e.isIntersecting) { const pid = e.target.id.replace('card-', ''); document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.pid === pid)); } });
+  es.forEach((e) => {
+    if (e.isIntersecting) {
+      const pid = e.target.id.replace('card-', '');
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.pid === pid));
+    }
+  });
 }, { rootMargin: '-40% 0px -55% 0px' });
 
-/* ─── Mobile ─── */
-function closeMobileNav() { document.querySelector('.sidebar').classList.remove('open'); document.querySelector('.sidebar-overlay')?.remove(); }
-function openMobileNav() {
-  const sidebar = document.querySelector('.sidebar');
-  sidebar.classList.add('open');
-  const overlay = el('div', 'sidebar-overlay');
-  overlay.onclick = closeMobileNav;
-  document.body.appendChild(overlay);
+/* ─── Sidebar open/close (mobile) ─── */
+function openSidebar() {
+  document.getElementById('sidebar')?.classList.add('open');
+  document.getElementById('sidebar-overlay')?.classList.add('on');
+}
+function closeSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebar-overlay')?.classList.remove('on');
+}
+function wireSidebar() {
+  document.getElementById('menu-btn')?.addEventListener('click', openSidebar);
+  document.getElementById('sidebar-overlay')?.addEventListener('click', closeSidebar);
 }
 
-/* ─── Model card ─── */
+/* ─── Keys ─── */
 const FREE_RE = /free|pickle|:free$/i;
-function isFreeModel(id) { return FREE_RE.test(id); }
+function isFreeModel(id) { return FREE_RE.test(String(id)); }
 
-function buildCard(p) {
-  const card = el('div', 'card');
-  card.id = 'card-' + p.id;
+let PROVIDER_KEYS = {};
+async function loadProviderKeys() {
+  try {
+    const d = await keysCall('provider-keys');
+    const map = {};
+    for (const p of (d.providers || [])) map[p.id] = p.key || '';
+    PROVIDER_KEYS = map;
+    return d;
+  } catch { return null; }
+}
+
+function credChip(k, value, emptyText) {
+  const chip = el('div', 'cred-chip');
+  chip.appendChild(el('span', 'cred-k', k));
+  const val = el('span', 'cred-v' + (value ? '' : ' empty'), value || emptyText);
+  val.title = value || emptyText;
+  chip.appendChild(val);
+  const btn = el('button', 'icon-btn');
+  btn.type = 'button';
+  btn.innerHTML = ICON.copy;
+  btn.title = 'Copy ' + k.toLowerCase();
+  btn.disabled = !value;
+  btn.onclick = () => { if (value) copy(value, btn); };
+  chip.appendChild(btn);
+  return chip;
+}
+
+function section(label, right, stepNo) {
+  const s = el('div', 'st-section');
+  const lab = el('div', 'st-label');
+  if (stepNo) lab.appendChild(el('span', 'st-step', stepNo));
+  lab.appendChild(el('span', null, label));
+  if (right) lab.appendChild(right);
+  s.appendChild(lab);
+  return s;
+}
+
+function setBusy(btn, busy) {
+  btn.classList.toggle('is-busy', busy);
+  btn.disabled = busy;
+}
+
+/* ─── Station card ─── */
+function buildCard(p, index) {
+  const station = el('article', 'station' + (index === 0 ? ' wide' : ''));
+  station.id = 'card-' + p.id;
   const st = { all: [], filtered: [], freeOnly: true, vis: {}, sel: null };
+  const apiKey = p.apiKey || PROVIDER_KEYS[p.id] || '';
 
-  // header
-  const header = el('div', 'card-head');
-  const logo = el('img', 'card-logo');
-  setLogo(logo, p);
-  const brand = el('div', 'card-info');
-  brand.appendChild(el('div', 'card-name', p.name));
-  const urlRow = el('div', 'card-url');
-  urlRow.title = p.baseURL;
-  urlRow.appendChild(el('span', null, p.baseURL));
-  const urlCopy = el('button', 'copy-btn', 'copy');
-  urlCopy.onclick = () => copy(p.baseURL, urlCopy);
-  urlRow.appendChild(urlCopy);
-  brand.appendChild(urlRow);
-  const badge = el('div', 'status', 'idle');
+  /* title bar */
+  const head = el('header', 'st-head');
+  const idRow = el('div', 'st-id');
+  const mono = el('div', 'st-mono');
+  fillMonogram(mono, p);
+  const idMeta = el('div', 'st-idmeta');
+  idMeta.appendChild(el('div', 'st-name', p.name));
+  const badge = el('span', 'st-badge', 'idle');
   badge.hidden = true;
-  header.append(logo, brand, badge);
+  idMeta.appendChild(badge);
+  idRow.append(mono, idMeta);
+  head.appendChild(idRow);
 
   if (p.custom) {
-    const actions = el('div', 'card-actions');
+    const tools = el('div', 'st-tools');
     const editBtn = el('button', 'icon-btn');
     editBtn.innerHTML = ICON.edit;
     editBtn.title = 'Edit';
     editBtn.onclick = (e) => { e.stopPropagation(); openEditDialog(p); };
-    const delBtn = el('button', 'icon-btn icon-btn-danger');
+    const delBtn = el('button', 'icon-btn danger');
     delBtn.innerHTML = ICON.trash;
     delBtn.title = 'Delete';
     delBtn.onclick = async (e) => {
       e.stopPropagation();
-      try { await callMethod('custom-providers', 'DELETE', { id: p.id }); card.remove(); document.querySelector(`.nav-item[data-pid="${p.id}"]`)?.remove(); allProviders = allProviders.filter(x => x.id !== p.id); } catch {}
+      try {
+        await callMethod('custom-providers', 'DELETE', { id: p.id });
+        station.remove();
+        document.querySelector(`.nav-item[data-pid="${p.id}"]`)?.remove();
+        allProviders = allProviders.filter(x => x.id !== p.id);
+        toast('Provider deleted', 'ok');
+      } catch (ex) { toast(ex.message || 'Delete failed', 'err'); }
     };
-    actions.append(editBtn, delBtn);
-    header.appendChild(actions);
+    tools.append(editBtn, delBtn);
+    head.appendChild(tools);
   }
 
-  // body
-  const body = el('div', 'card-body');
+  /* credential chips */
+  const creds = el('div', 'st-creds');
+  creds.appendChild(credChip('Base', p.baseURL, 'unset'));
+  if (!p.noAuth) creds.appendChild(credChip('Key', apiKey, 'no key'));
 
-  // model section
-  const modelField = el('div', 'field');
+  /* workbench body */
+  const body = el('div', 'st-body');
+  const main = el('div', 'st-main');
+
+  /* step 01 — model catalog */
+  const cat = section('Model catalog', null, '01');
+  const searchWrap = el('div', 'field-row');
   const si = el('input', 'input');
-  si.placeholder = 'Search models…';
+  si.placeholder = 'Filter models…';
   si.disabled = true;
-  const freeRow = el('div', 'free-row');
-  const freeLabel = el('label', 'toggle-label');
+  si.style.flex = '1 1 180px';
+  searchWrap.appendChild(si);
+
+  const freeLabel = el('label', 'toggle');
   const freeCb = el('input');
   freeCb.type = 'checkbox';
   freeCb.checked = true;
   freeCb.className = 'toggle-input';
-  const freeTrack = el('span', 'toggle-track');
-  const freeKnob = el('span', 'toggle-knob');
-  freeTrack.appendChild(freeKnob);
+  const freeTrack = el('span', 'tg-track');
+  freeTrack.appendChild(el('span', 'tg-knob'));
   freeLabel.append(freeCb, freeTrack, el('span', null, 'Free only'));
-  freeRow.appendChild(freeLabel);
+  searchWrap.appendChild(freeLabel);
+
+  const pickRow = el('div', 'field-row');
   const sel = el('select', 'select');
   sel.appendChild(el('option', null, 'Loading…'));
   sel.disabled = true;
+  sel.style.flex = '1 1 200px';
   st.sel = sel;
-  const innerRow = el('div', 'model-row');
-  innerRow.append(sel);
+  pickRow.appendChild(sel);
   const modelCopy = el('button', 'icon-btn');
   modelCopy.innerHTML = ICON.copy;
-  modelCopy.title = 'Copy model';
-  modelCopy.onclick = () => { if (sel.value) copy(sel.value, modelCopy); };
-  innerRow.appendChild(modelCopy);
-  modelField.append(si, freeRow, innerRow);
+  modelCopy.title = 'Copy model id';
+  modelCopy.onclick = () => { const mid = customModel.value.trim() || sel.value; if (mid) copy(mid, modelCopy); };
+  pickRow.appendChild(modelCopy);
 
-  // prompt
-  const PROMPT_PRESETS = { 'Ping': 'Reply with exactly: pong', 'Hello': 'Say hello in one short sentence.', 'Haiku': 'Write a haiku about code.' };
-  const promptField = el('div', 'field');
-  const pillRow = el('div', 'preset-row');
-  const taWrap = el('div', 'prompt-area');
-  const ta = el('textarea', 'input');
-  ta.value = localStorage.getItem('mlab_prompt_' + p.id) || PROMPT_PRESETS['Ping'];
-  ta.rows = 2;
-  for (const [name, text] of Object.entries(PROMPT_PRESETS)) {
-    const b = el('button', 'preset-pill', name);
-    b.type = 'button';
-    b.onclick = () => { ta.value = text; ta.focus(); markActive(name); };
-    pillRow.appendChild(b);
-  }
-  function markActive(n) { pillRow.querySelectorAll('.preset-pill').forEach(b => b.classList.toggle('active', b.textContent === n)); }
-  ta.addEventListener('input', () => { localStorage.setItem('mlab_prompt_' + p.id, ta.value); const f = Object.entries(PROMPT_PRESETS).find(([, t]) => t === ta.value); markActive(f ? f[0] : null); });
-  markActive((Object.entries(PROMPT_PRESETS).find(([, t]) => t === ta.value) || [])[0] || null);
-  taWrap.append(ta);
-  promptField.append(pillRow, taWrap);
+  const customRow = el('div', 'field-row');
+  const customModel = el('input', 'input');
+  customModel.placeholder = 'Custom model id (optional)…';
+  customModel.autocomplete = 'off';
+  customModel.spellcheck = false;
+  customModel.style.fontFamily = 'var(--mono)';
+  customModel.style.fontSize = '12px';
+  customModel.style.flex = '1 1 200px';
+  customModel.title = 'Type any model id to probe — works even if it is not in the catalog';
+  const clearCustom = el('button', 'btn btn-xs', 'clear');
+  clearCustom.type = 'button';
+  clearCustom.onclick = () => { customModel.value = ''; sel.focus(); };
+  customRow.append(customModel, clearCustom);
+  customModel.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); testBtn.click(); }
+  });
 
-  // buttons
-  const br = el('div', 'btn-row');
-  const loadBtn = el('button', 'btn btn-ghost');
-  loadBtn.innerHTML = ICON.reload + '<span>Models</span>';
-  const testBtn = el('button', 'btn btn-primary');
-  testBtn.innerHTML = ICON.bolt + '<span>Test</span>';
-  br.append(loadBtn, testBtn);
+  cat.append(searchWrap, pickRow, customRow);
 
-  // result
-  const res = el('div', 'result placeholder');
-  res.textContent = 'Run a test to see the result here.';
-
-  body.append(modelField, promptField, br, res);
-  card.append(header, body);
-
-  // model list with toggles
   const modelList = el('div', 'model-list');
   modelList.style.display = 'none';
-  body.appendChild(modelList);
+  cat.appendChild(modelList);
+  main.appendChild(cat);
 
-  // filter
+  /* step 02 — prompt skills */
+  const probe = section('Prompt skills', null, '02');
+  const pills = el('div', 'pills');
+  const PROMPT_PRESETS = { 'Ping': 'Reply with exactly: pong', 'Hello': 'Say hello in one short sentence.', 'Haiku': 'Write a haiku about code.' };
+  const ta = el('textarea', 'input');
+  ta.value = localStorage.getItem('mlab_prompt_' + p.id) || PROMPT_PRESETS['Ping'];
+  ta.rows = 3;
+  ta.placeholder = 'Prompt…';
+  for (const [name, text] of Object.entries(PROMPT_PRESETS)) {
+    const b = el('button', 'pill', name);
+    b.type = 'button';
+    b.onclick = () => { ta.value = text; ta.focus(); markActive(name); };
+    pills.appendChild(b);
+  }
+  function markActive(n) {
+    pills.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', b.textContent === n));
+  }
+  ta.addEventListener('input', () => {
+    localStorage.setItem('mlab_prompt_' + p.id, ta.value);
+    const f = Object.entries(PROMPT_PRESETS).find(([, t]) => t === ta.value);
+    markActive(f ? f[0] : null);
+  });
+  markActive((Object.entries(PROMPT_PRESETS).find(([, t]) => t === ta.value) || [])[0] || null);
+
+  const actions = el('div', 'probe-bar');
+  const loadBtn = el('button', 'btn btn-sm');
+  loadBtn.innerHTML = ICON.refresh + '<span>Refresh models</span>';
+  loadBtn.title = 'Reload the model catalog from this provider';
+  const testBtn = el('button', 'btn btn-solid btn-sm');
+  testBtn.innerHTML = ICON.bolt + '<span>Run probe</span>';
+  testBtn.title = 'Send the prompt to the selected model';
+  actions.append(loadBtn, testBtn);
+
+  probe.append(pills, ta, actions);
+  main.appendChild(probe);
+  body.appendChild(main);
+
+  /* step 03 — output terminal */
+  const outSec = section('Output', null, '03');
+  outSec.classList.add('st-section-out');
+  const res = el('div', 'output hollow');
+  res.textContent = 'No probe yet. Pick a model and run.';
+  outSec.appendChild(res);
+  body.appendChild(outSec);
+
+  station.append(head, creds, body);
+
   function applyFilter() {
     const q = si.value.toLowerCase();
     let pool = st.freeOnly ? st.all.filter(m => isFreeModel(m)) : st.all;
@@ -295,22 +413,24 @@ function buildCard(p) {
     if (!toShow.length) { modelList.style.display = 'none'; return; }
     modelList.style.display = '';
     for (const m of toShow) {
-      const row = el('div', 'model-row-item');
-      const name = el('span', 'model-name', m);
+      const row = el('div', 'mrow');
+      const name = el('span', 'mname' + (isFreeModel(m) ? ' free' : ''), m);
       name.title = m;
-      const switchLabel = el('label', 'toggle-label');
+      const switchLabel = el('label', 'toggle');
       const cb = el('input');
       cb.type = 'checkbox';
       cb.className = 'toggle-input';
-      cb.checked = st.vis[p.id + '/' + m] !== false;
-      const track = el('span', 'toggle-track');
-      const knob = el('span', 'toggle-knob');
-      track.appendChild(knob);
+      const key = p.id + '/' + m;
+      cb.checked = key in st.vis ? !!st.vis[key] : isFreeModel(m);
+      const track = el('span', 'tg-track');
+      track.appendChild(el('span', 'tg-knob'));
       switchLabel.append(cb, track);
+      if (!cb.checked) row.classList.add('is-off');
       cb.addEventListener('change', async () => {
-        const key = p.id + '/' + m;
         st.vis[key] = cb.checked;
-        try { await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, enabled: cb.checked }); } catch { st.vis[key] = !cb.checked; cb.checked = !cb.checked; }
+        row.classList.toggle('is-off', !cb.checked);
+        try { await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, enabled: cb.checked }); }
+        catch { st.vis[key] = !cb.checked; cb.checked = !cb.checked; row.classList.toggle('is-off', !cb.checked); toast('Save failed', 'err'); }
       });
       row.append(name, switchLabel);
       modelList.appendChild(row);
@@ -322,8 +442,10 @@ function buildCard(p) {
 
   async function doLoad() {
     sel.disabled = true; si.disabled = true;
-    badge.hidden = false; badge.className = 'status load'; badge.textContent = 'loading…';
-    res.className = 'result placeholder'; res.textContent = 'Loading…';
+    setBusy(loadBtn, true);
+    station.classList.add('is-probing');
+    badge.hidden = false; badge.className = 'st-badge load'; badge.textContent = 'loading';
+    res.className = 'output hollow loading'; res.textContent = 'Fetching catalog…';
     modelList.innerHTML = '';
     try {
       const [d, visResp] = await Promise.all([callFn('models', { providerId: p.id }), callGet('model-visibility')]);
@@ -333,46 +455,65 @@ function buildCard(p) {
       if (p.defaultModel && st.filtered.includes(p.defaultModel)) sel.value = p.defaultModel;
       sel.dataset.prev = sel.value;
       sel.disabled = false; si.disabled = false; si.value = '';
-      badge.className = 'status ok'; badge.textContent = d.count + ' models';
-      res.className = 'result placeholder'; res.textContent = 'Pick a model and hit Test.';
+      badge.className = 'st-badge ok'; badge.textContent = d.count + ' models';
+      res.className = 'output hollow'; res.textContent = 'Catalog ready. Run a probe.';
       const nb = document.getElementById('nav-badge-' + p.id);
       if (nb) nb.textContent = d.count;
+      station.classList.remove('is-probing');
+      station.classList.add('is-ok');
+      setTimeout(() => station.classList.remove('is-ok'), 600);
     } catch (e) {
-      badge.className = 'status err'; badge.textContent = 'error';
-      res.className = 'result err'; res.textContent = '✗ ' + e.message;
+      badge.className = 'st-badge err'; badge.textContent = 'error';
+      res.className = 'output err'; res.textContent = '✗ ' + e.message;
+      station.classList.remove('is-probing');
+      station.classList.add('is-err');
+      setTimeout(() => station.classList.remove('is-err'), 450);
+    } finally {
+      setBusy(loadBtn, false);
+      station.classList.remove('is-probing');
     }
   }
 
   async function doTest() {
-    const model = sel.value;
+    const model = (customModel.value || '').trim() || sel.value;
     if (!model || model === 'no match' || model === 'no free models' || model === 'Loading…') return;
-    sel.dataset.prev = model;
-    testBtn.disabled = true;
-    badge.hidden = false; badge.className = 'status load'; badge.textContent = 'testing…';
-    res.className = 'result'; res.textContent = 'Testing ' + model + '…';
+    if (!customModel.value.trim()) sel.dataset.prev = model;
+    setBusy(testBtn, true);
+    station.classList.add('is-probing');
+    badge.hidden = false; badge.className = 'st-badge load'; badge.textContent = 'probing';
+    res.className = 'output loading'; res.textContent = '→ ' + model;
     try {
       const d = await callFn('chat', { providerId: p.id, model, messages: [{ role: 'user', content: ta.value }], maxTokens: 128 });
-      let html = '<div class="meta">' + esc(d.model || model) + ' · ' + (d.ms || '') + 'ms' + (d.via ? ' · ' + esc(d.via) : '') + '</div>';
-      if (d.reasoning) html += '<div class="reasoning">' + esc(d.reasoning.slice(0, 400)) + '</div>';
-      html += '<div>' + esc(d.content || '(empty)') + '</div>';
-      res.className = 'result'; res.innerHTML = html;
-      badge.className = 'status ok'; badge.textContent = d.ms + 'ms';
+      let html = '<div class="body-in"><div class="meta"><span>' + esc(d.model || model) + '</span><span>' + (d.ms || '') + 'ms</span>' + (d.via ? '<span>' + esc(d.via) + '</span>' : '') + '</div>';
+      if (d.reasoning) html += '<div class="thought">' + esc(d.reasoning.slice(0, 400)) + '</div>';
+      html += '<div>' + esc(d.content || '(empty)') + '</div></div>';
+      res.className = 'output'; res.innerHTML = html;
+      badge.className = 'st-badge ok'; badge.textContent = d.ms + 'ms';
+      station.classList.remove('is-probing');
+      station.classList.add('is-ok');
+      setTimeout(() => station.classList.remove('is-ok'), 600);
     } catch (e) {
-      res.className = 'result err'; res.textContent = '✗ ' + e.message;
-      badge.className = 'status err'; badge.textContent = 'error';
-    } finally { testBtn.disabled = false; }
+      res.className = 'output err'; res.textContent = '✗ ' + e.message;
+      badge.className = 'st-badge err'; badge.textContent = 'error';
+      station.classList.remove('is-probing');
+      station.classList.add('is-err');
+      setTimeout(() => station.classList.remove('is-err'), 450);
+    } finally {
+      setBusy(testBtn, false);
+      station.classList.remove('is-probing');
+    }
   }
 
   doLoad();
-  spy.observe(card);
-  return card;
+  spy.observe(station);
+  return station;
 }
 
 /* ─── Edit dialog ─── */
 let _dialogMode = 'add';
 function openEditDialog(p) {
   const dlg = document.getElementById('prov-dialog');
-  const title = dlg.querySelector('.dlg-title');
+  const title = document.getElementById('prov-dlg-title');
   const nameI = document.getElementById('prov-name');
   const baseI = document.getElementById('prov-base');
   const keyI = document.getElementById('prov-key');
@@ -408,80 +549,112 @@ function openEditDialog(p) {
 
 /* ─── Auth ─── */
 async function verifyPassword(pw) {
-  try { const r = await fetch(api('auth'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) }); const d = await r.json().catch(() => ({})); return !!(r.ok && d.ok); } catch { return false; }
+  try {
+    const r = await fetch(api('auth'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    const d = await r.json().catch(() => ({}));
+    return !!(r.ok && d.ok);
+  } catch { return false; }
 }
 
-async function keysCall(action, extra){
-  const r = await fetch(api('api-keys'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,password:localStorage.getItem('mlab_pw')||'',...(extra||{})})});
-  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||'HTTP '+r.status); return d;
+async function keysCall(action, extra) {
+  const r = await fetch(api('api-keys'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, password: localStorage.getItem('mlab_pw') || '', ...(extra || {}) })
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  return d;
 }
 
-function wireGateway(){
+function wireGateway() {
   const baseInput = document.getElementById('gw-base');
   const keyInput = document.getElementById('gw-key');
-  if(!baseInput||!keyInput) return;
+  if (!baseInput || !keyInput) return;
   baseInput.value = location.origin + '/v1';
-  async function load(){
-    try{ const d = await keysCall('ensure'); keyInput.value = (d.key&&d.key.key)||''; } catch{ keyInput.value=''; }
+  let keyId = null;
+  async function load() {
+    try {
+      const d = await keysCall('ensure');
+      keyInput.value = (d.key && d.key.key) || '';
+      keyId = (d.key && d.key.id) || null;
+    } catch { keyInput.value = ''; keyId = null; }
   }
   load();
-  document.getElementById('gw-base-copy')?.addEventListener('click', (e)=>copy(baseInput.value, e.currentTarget));
-  document.getElementById('gw-key-copy')?.addEventListener('click', (e)=>copy(keyInput.value, e.currentTarget));
-  document.getElementById('gw-copy-all')?.addEventListener('click', async (e)=>{
-    const btn=e.currentTarget;
-    try{
-      const d = await keysCall('provider-keys');
-      const k = await keysCall('ensure');
-      const uniKey=(k&&k.key&&k.key.key)?k.key.key:'';
-      const uniBase=d.universal_base||location.origin+'/v1';
-      const blocks=(d.providers||[]).map(p=>'# '+p.name+'\nBASE_URL='+p.baseURL+'\nAPI_KEY='+(p.key||'(none)'));
-      const text='UNIVERSAL_BASE='+uniBase+'\nUNIVERSAL_KEY='+uniKey+(blocks.length?'\n\n'+blocks.join('\n\n'):'');
-      copy(text, btn);
-    }catch(ex){ copy(baseInput.value+'\n'+keyInput.value, btn); }
+  document.getElementById('gw-base-copy')?.addEventListener('click', (e) => copy(baseInput.value, e.currentTarget));
+  document.getElementById('gw-key-copy')?.addEventListener('click', (e) => copy(keyInput.value, e.currentTarget));
+  document.getElementById('gw-key-del')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!keyId || btn.disabled) return;
+    setBusy(btn, true);
+    try {
+      await keysCall('revoke', { id: keyId });
+      await load();
+      toast('Key deleted — new key generated', 'ok');
+    } catch (ex) { toast(ex.message || 'Delete failed', 'err'); }
+    finally { setBusy(btn, false); }
   });
 }
 
-function wireAllProviders(){
-  const dlg=document.getElementById('all-dialog'); if(!dlg) return;
-  const list=document.getElementById('all-list');
-  const err=document.getElementById('all-err');
-  const copyAllBtn=document.getElementById('all-copy');
-  let cache={universal_base:'',providers:[]};
-  const blockFor=(p)=>'# '+(p.name||p.id)+'\nBASE_URL='+(p.baseURL||'')+'\nAPI_KEY='+(p.key||'(none)');
-  function render(providers){
-    list.innerHTML='';
-    if(!providers.length){ const empty=el('div',null,'No providers found.'); empty.style.cssText='font-size:13px;color:var(--text-3)'; list.appendChild(empty); return; }
-    providers.forEach(p=>{
-      const row=el('div'); row.style.cssText='border:1px solid var(--border);border-radius:var(--r-md);padding:8px 10px;background:var(--surface-raised)';
-      const top=el('div'); top.style.cssText='display:flex;align-items:center;gap:8px';
-      const nameEl=el('span',null,p.name||p.id); nameEl.style.cssText='font-weight:600;font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      const cb=el('button','copy-btn','copy'); cb.onclick=()=>copy(blockFor(p),cb);
-      top.append(nameEl,cb);
-      const baseEl=el('div',null,p.baseURL||''); baseEl.style.cssText='font-family:var(--mono);font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px';
-      const keyEl=el('div',null,p.key?mask(p.key):'(none)'); keyEl.style.cssText='font-family:var(--mono);font-size:11px;color:var(--text-4);margin-top:2px;word-break:break-all';
-      row.append(top,baseEl,keyEl); list.appendChild(row);
+function wireAllProviders() {
+  const dlg = document.getElementById('all-dialog'); if (!dlg) return;
+  const list = document.getElementById('all-list');
+  const err = document.getElementById('all-err');
+  const copyAllBtn = document.getElementById('all-copy');
+  let cache = { universal_base: '', providers: [] };
+  const blockFor = (p) => '# ' + (p.name || p.id) + '\nBASE_URL=' + (p.baseURL || '') + '\nAPI_KEY=' + (p.key || '(none)');
+  function render(providers) {
+    list.innerHTML = '';
+    if (!providers.length) { list.appendChild(el('div', 'ap-empty', 'No providers found.')); return; }
+    providers.forEach(p => {
+      const row = el('div', 'ap-row');
+      const top = el('div', 'ap-top');
+      const nameEl = el('span', 'ap-name', p.name || p.id);
+      const cb = el('button', 'btn btn-xs', 'copy');
+      cb.onclick = () => copy(blockFor(p), cb);
+      top.append(nameEl, cb);
+      const baseEl = el('div', 'ap-line', p.baseURL || '');
+      const keyEl = el('div', 'ap-line dim', p.key ? mask(p.key) : '(none)');
+      row.append(top, baseEl, keyEl);
+      list.appendChild(row);
     });
   }
-  async function load(){
-    err.textContent=''; list.innerHTML='<div style="font-size:13px;color:var(--text-3)">Loading…</div>';
-    try{ const d=await keysCall('provider-keys'); cache.universal_base=d.universal_base||''; cache.providers=d.providers||[]; render(cache.providers);}catch(e){ list.innerHTML=''; err.textContent=e.message; }
+  async function load() {
+    err.textContent = '';
+    list.innerHTML = '<div class="ap-empty">Loading…</div>';
+    try {
+      const d = await keysCall('provider-keys');
+      cache.universal_base = d.universal_base || '';
+      cache.providers = d.providers || [];
+      render(cache.providers);
+    } catch (e) { list.innerHTML = ''; err.textContent = e.message; }
   }
-  document.getElementById('allprov-btn')?.addEventListener('click', ()=>{ load(); dlg.showModal(); });
-  copyAllBtn?.addEventListener('click', async ()=>{
-    err.textContent='';
-    try{ const k=await keysCall('ensure'); const uniKey=(k&&k.key&&k.key.key)?k.key.key:''; const text='UNIVERSAL_BASE='+(cache.universal_base||'')+'\nUNIVERSAL_KEY='+uniKey+(cache.providers.length?'\n\n'+cache.providers.map(blockFor).join('\n\n'):''); copy(text, copyAllBtn);}catch(ex){ err.textContent=ex.message; }
+  document.getElementById('allprov-btn')?.addEventListener('click', () => { load(); dlg.showModal(); });
+  copyAllBtn?.addEventListener('click', async () => {
+    err.textContent = '';
+    try {
+      const k = await keysCall('ensure');
+      const uniKey = (k && k.key && k.key.key) ? k.key.key : '';
+      const text = 'UNIVERSAL_BASE=' + (cache.universal_base || '') + '\nUNIVERSAL_KEY=' + uniKey + (cache.providers.length ? '\n\n' + cache.providers.map(blockFor).join('\n\n') : '');
+      copy(text, copyAllBtn);
+    } catch (ex) { err.textContent = ex.message; }
   });
-  document.getElementById('all-close')?.addEventListener('click', ()=>dlg.close());
-  dlg.addEventListener('click',(e)=>{ if(e.target===dlg) dlg.close(); });
+  document.getElementById('all-close')?.addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 }
 
 function buildUI() {
   buildNav();
+  wireSidebar();
   const grid = $('#cards');
-  for (const p of PROVIDERS) grid.appendChild(buildCard(p));
+  PROVIDERS.forEach((p, i) => grid.appendChild(buildCard(p, i)));
   callGet('custom-providers').then((d) => {
     for (const c of (d.providers || [])) {
-      const card = buildCard({ id: c.id, name: c.name, color: '#60A5FA', baseURL: c.baseURL, apiKey: c.apiKey, custom: true, defaultModel: '', icon: c.logoUrl || '' });
+      const card = buildCard({
+        id: c.id, name: c.name, color: '#60A5FA', baseURL: c.baseURL,
+        apiKey: c.apiKey || PROVIDER_KEYS[c.id] || '', custom: true,
+        defaultModel: '', icon: c.logoUrl || ''
+      }, 99);
       grid.appendChild(card);
       addCustomToNav(c);
     }
@@ -491,7 +664,23 @@ function buildUI() {
   wireDialog();
 }
 
-/* ─── Dialog wiring ─── */
+function openProvDialog() {
+  const dlg = document.getElementById('prov-dialog');
+  const title = document.getElementById('prov-dlg-title');
+  const err = document.getElementById('prov-err');
+  const nameI = document.getElementById('prov-name');
+  const saveBtn = document.getElementById('prov-save');
+  _dialogMode = 'add';
+  title.textContent = 'Add provider';
+  err.textContent = '';
+  nameI.value = '';
+  document.getElementById('prov-base').value = '';
+  document.getElementById('prov-key').value = '';
+  saveBtn.disabled = false; saveBtn.textContent = 'Add provider';
+  dlg.showModal();
+  setTimeout(() => nameI.focus(), 50);
+}
+
 function wireDialog() {
   const dlg = document.getElementById('prov-dialog');
   const err = document.getElementById('prov-err');
@@ -499,17 +688,9 @@ function wireDialog() {
   const baseI = document.getElementById('prov-base');
   const keyI = document.getElementById('prov-key');
   const saveBtn = document.getElementById('prov-save');
-  const title = dlg.querySelector('.dlg-title');
 
-  function reset() {
-    _dialogMode = 'add';
-    title.textContent = 'Add provider';
-    err.textContent = '';
-    nameI.value = ''; baseI.value = ''; keyI.value = '';
-    saveBtn.disabled = false; saveBtn.textContent = 'Add provider';
-  }
-
-  document.getElementById('add-prov-btn').onclick = () => { reset(); dlg.showModal(); setTimeout(() => nameI.focus(), 50); };
+  document.getElementById('add-prov-btn').onclick = openProvDialog;
+  document.getElementById('top-add-btn').onclick = openProvDialog;
   document.getElementById('prov-cancel').onclick = () => dlg.close();
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 
@@ -519,12 +700,14 @@ function wireDialog() {
     const name = nameI.value.trim();
     const baseURL = baseI.value.trim();
     if (name.length < 2 || name.length > 40) { err.textContent = 'Name 2–40 chars.'; nameI.focus(); return; }
-    try { const u = new URL(baseURL); if (!['http:', 'https:'].includes(u.protocol)) throw 0; } catch { err.textContent = 'Enter a valid URL.'; baseI.focus(); return; }
+    try { const u = new URL(baseURL); if (!['http:', 'https:'].includes(u.protocol)) throw 0; }
+    catch { err.textContent = 'Enter a valid URL.'; baseI.focus(); return; }
     err.textContent = '';
     saveBtn.disabled = true; saveBtn.textContent = 'Adding…';
     try {
       await callFn('custom-providers', { name, baseURL, apiKey: keyI.value.trim() });
-      saveBtn.textContent = 'Added ✓';
+      saveBtn.textContent = 'Added';
+      toast('Provider added', 'ok');
       setTimeout(() => location.reload(), 400);
     } catch (ex) { err.textContent = ex.message; saveBtn.disabled = false; saveBtn.textContent = 'Add provider'; }
   };
@@ -532,9 +715,9 @@ function wireDialog() {
 }
 
 let uiBuilt = false;
-function unlock() {
+async function unlock() {
   document.getElementById('lock').classList.add('hidden');
-  if (!uiBuilt) { uiBuilt = true; buildUI(); }
+  if (!uiBuilt) { uiBuilt = true; await loadProviderKeys(); buildUI(); }
 }
 
 async function initGate() {
@@ -559,4 +742,3 @@ async function initGate() {
 }
 
 initGate();
-document.getElementById('mobile-menu-btn').addEventListener('click', openMobileNav);

@@ -113,21 +113,22 @@ async function collectModels() {
       }
     } catch { /* skip failed provider */ }
   }
-  // Apply per-model visibility: only activated models are served via /v1.
+  // Apply per-model visibility. Free models are on by default; paid models
+  // stay off until explicitly enabled (stored true wins either way).
   try {
-    const vis = await storeGet('model-visibility', {});
-    if (vis && Object.keys(vis).length) {
-      for (let i = entries.length - 1; i >= 0; i--) {
-        if (vis[entries[i].providerId + '/' + entries[i].model] === false) entries.splice(i, 1);
-      }
-      for (const [key, enabled] of Object.entries(vis)) {
-        if (enabled !== false) continue;
-        const slash = key.indexOf('/');
-        if (slash === -1) continue;
-        const pid = key.slice(0, slash);
-        const name = key.slice(slash + 1);
-        const owners = byModel.get(name);
-        if (owners) owners.delete(pid);
+    const vis = await storeGet('model-visibility', {}) || {};
+    const FREE_RE = /free|pickle|:free$/i;
+    const visible = (pid, name) => {
+      const key = pid + '/' + name;
+      if (key in vis) return vis[key] === true;
+      return FREE_RE.test(String(name));
+    };
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (!visible(entries[i].providerId, entries[i].model)) entries.splice(i, 1);
+    }
+    for (const [name, owners] of byModel) {
+      for (const pid of [...owners]) {
+        if (!visible(pid, name)) owners.delete(pid);
       }
     }
   } catch { /* visibility is optional */ }
