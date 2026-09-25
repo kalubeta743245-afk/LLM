@@ -1,14 +1,11 @@
 const PROVIDERS = [
   { id:'tokenrouter', name:'TokenRouter', color:'#0ea5e9', baseURL:'https://api.tokenrouter.com/v1', defaultModel:'z-ai/glm-5.3-free', icon:'https://www.tokenrouter.com/logo-without-title.png' },
   { id:'nvidia', name:'NVIDIA NIM', color:'#76b900', baseURL:'https://integrate.api.nvidia.com/v1', defaultModel:'meta/llama-3.3-70b-instruct', icon:'https://developer.download.nvidia.com/icons/m48-nim-256px-blk.png' },
-  { id:'openrouter', name:'OpenRouter', color:'#8b5cf6', baseURL:'https://openrouter.ai/api/v1', defaultModel:'openai/gpt-4o-mini', icon:'https://openrouter.ai/brand/v2/openrouter-glyph-light.svg' },
   { id:'tokenharbor', name:'Token Harbor', color:'#f97316', baseURL:'https://tokenharbor.ai/v1', defaultModel:'deepseek-v4-flash' },
   { id:'tokenforge', name:'Token Forge', color:'#ef4444', baseURL:'https://tokenforge.ai.studio/v1', defaultModel:'claude-opus-5' },
   { id:'orcarouter', name:'OrcaRouter', color:'#f59e0b', baseURL:'https://www.orcarouter.ai/v1', defaultModel:'orcarouter/free', icon:'https://www.orcarouter.ai/orca-logo.png' },
-  { id:'aihubmix', name:'AI Hub Mix', color:'#06b6d4', baseURL:'https://aihubmix.com/v1', defaultModel:'gpt-4o' },
   { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'https://inceptionlabs.ai/favicon.ico' },
   { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'https://kilo.ai/favicon.ico' },
-  { id:'phoenixgrove', name:'Phoenix Grove', color:'#e11d48', baseURL:'https://api.pgsgrove.com/v1', defaultModel:'deepseek-v4-flash', icon:'https://www.google.com/s2/favicons?domain=pgsgrove.com&sz=128' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;
