@@ -207,26 +207,27 @@ async function loadProviderKeys() {
   } catch { return null; }
 }
 
-function credChip(k, value, emptyText) {
-  const chip = el('div', 'cred-chip');
-  chip.appendChild(el('span', 'cred-k', k));
-  const val = el('span', 'cred-v' + (value ? '' : ' empty'), value || emptyText);
-  val.title = value || emptyText;
-  chip.appendChild(val);
-  const btn = el('button', 'icon-btn');
-  btn.type = 'button';
-  btn.innerHTML = ICON.copy;
-  btn.title = 'Copy ' + k.toLowerCase();
-  btn.disabled = !value;
-  btn.onclick = () => { if (value) copy(value, btn); };
-  chip.appendChild(btn);
-  return chip;
+function metaValue(k, shown, copyVal, copyable, emptyText) {
+  const item = el('span', 'st-meta-item');
+  item.appendChild(el('span', 'st-meta-k', k));
+  const v = el('span', 'st-meta-v' + (shown ? '' : ' empty'), shown || emptyText || '');
+  v.title = shown || emptyText || '';
+  item.appendChild(v);
+  if (copyable) {
+    const btn = el('button', 'icon-btn');
+    btn.type = 'button';
+    btn.innerHTML = ICON.copy;
+    btn.title = 'Copy ' + k.toLowerCase();
+    btn.disabled = !copyVal;
+    btn.onclick = () => { if (copyVal) copy(copyVal, btn); };
+    item.appendChild(btn);
+  }
+  return item;
 }
 
-function section(label, right, stepNo) {
+function section(label, right) {
   const s = el('div', 'st-section');
   const lab = el('div', 'st-label');
-  if (stepNo) lab.appendChild(el('span', 'st-step', stepNo));
   lab.appendChild(el('span', null, label));
   if (right) lab.appendChild(right);
   s.appendChild(lab);
@@ -242,10 +243,13 @@ function setBusy(btn, busy) {
 function buildCard(p, index) {
   const station = el('article', 'station' + (index === 0 ? ' wide' : ''));
   station.id = 'card-' + p.id;
-  const st = { all: [], filtered: [], freeOnly: true, vis: {}, sel: null };
+  const st = { all: [], filtered: [], freeOnly: true, vis: {}, aliases: {}, sel: null };
   const apiKey = p.apiKey || PROVIDER_KEYS[p.id] || '';
+  const keyOf = (m) => p.id + '/' + m;
+  const isOn = (m) => (keyOf(m) in st.vis) ? !!st.vis[keyOf(m)] : isFreeModel(m);
+  const aliasOf = (m) => st.aliases[keyOf(m)] || '';
 
-  /* title bar */
+  /* header */
   const head = el('header', 'st-head');
   const idRow = el('div', 'st-id');
   const mono = el('div', 'st-mono');
@@ -281,22 +285,25 @@ function buildCard(p, index) {
     head.appendChild(tools);
   }
 
-  /* credential chips */
-  const creds = el('div', 'st-creds');
-  creds.appendChild(credChip('Base', p.baseURL, 'unset'));
-  if (!p.noAuth) creds.appendChild(credChip('Key', apiKey, 'no key'));
+  /* quiet credential line */
+  const creds = el('div', 'st-meta');
+  creds.appendChild(metaValue('Base', p.baseURL, p.baseURL, true, 'unset'));
+  if (!p.noAuth) creds.appendChild(metaValue('Key', apiKey ? mask(apiKey) : '', apiKey, true, 'no key'));
 
   /* workbench body */
   const body = el('div', 'st-body');
   const main = el('div', 'st-main');
 
-  /* step 01 — model catalog */
-  const cat = section('Model catalog', null, '01');
+  /* model catalog + activation */
+  const cat = section('Model catalog');
   const searchWrap = el('div', 'field-row');
   const si = el('input', 'input');
-  si.placeholder = 'Filter models…';
+  si.placeholder = 'Search full catalog to activate…';
   si.disabled = true;
-  si.style.flex = '1 1 180px';
+  si.autocomplete = 'off';
+  si.spellcheck = false;
+  si.setAttribute('aria-label', 'Search models');
+  si.style.flex = '1 1 200px';
   searchWrap.appendChild(si);
 
   const freeLabel = el('label', 'toggle');
@@ -308,11 +315,17 @@ function buildCard(p, index) {
   freeTrack.appendChild(el('span', 'tg-knob'));
   freeLabel.append(freeCb, freeTrack, el('span', null, 'Free only'));
   searchWrap.appendChild(freeLabel);
+  cat.appendChild(searchWrap);
+
+  const modelList = el('div', 'model-list');
+  modelList.hidden = true;
+  cat.appendChild(modelList);
 
   const pickRow = el('div', 'field-row');
   const sel = el('select', 'select');
   sel.appendChild(el('option', null, 'Loading…'));
   sel.disabled = true;
+  sel.setAttribute('aria-label', 'Active models');
   sel.style.flex = '1 1 200px';
   st.sel = sel;
   pickRow.appendChild(sel);
@@ -321,6 +334,7 @@ function buildCard(p, index) {
   modelCopy.title = 'Copy model id';
   modelCopy.onclick = () => { const mid = customModel.value.trim() || sel.value; if (mid) copy(mid, modelCopy); };
   pickRow.appendChild(modelCopy);
+  cat.appendChild(pickRow);
 
   const customRow = el('div', 'field-row');
   const customModel = el('input', 'input');
@@ -338,16 +352,11 @@ function buildCard(p, index) {
   customModel.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); testBtn.click(); }
   });
-
-  cat.append(searchWrap, pickRow, customRow);
-
-  const modelList = el('div', 'model-list');
-  modelList.style.display = 'none';
-  cat.appendChild(modelList);
+  cat.appendChild(customRow);
   main.appendChild(cat);
 
-  /* step 02 — prompt skills */
-  const probe = section('Prompt skills', null, '02');
+  /* prompt skills */
+  const probe = section('Prompt skills');
   const pills = el('div', 'pills');
   const PROMPT_PRESETS = { 'Ping': 'Reply with exactly: pong', 'Hello': 'Say hello in one short sentence.', 'Haiku': 'Write a haiku about code.' };
   const ta = el('textarea', 'input');
@@ -383,8 +392,8 @@ function buildCard(p, index) {
   main.appendChild(probe);
   body.appendChild(main);
 
-  /* step 03 — output terminal */
-  const outSec = section('Output', null, '03');
+  /* output */
+  const outSec = section('Output');
   outSec.classList.add('st-section-out');
   const res = el('div', 'output hollow');
   res.textContent = 'No probe yet. Pick a model and run.';
@@ -393,50 +402,147 @@ function buildCard(p, index) {
 
   station.append(head, creds, body);
 
-  function applyFilter() {
-    const q = si.value.toLowerCase();
-    let pool = st.freeOnly ? st.all.filter(m => isFreeModel(m)) : st.all;
-    if (q) pool = pool.filter(m => m.toLowerCase().includes(q));
+  function applySelect() {
+    const prev = sel.value;
+    const pool = st.all.filter(m => isOn(m) && (!st.freeOnly || isFreeModel(m)));
     st.filtered = pool;
     sel.innerHTML = '';
-    if (!pool.length) { sel.appendChild(el('option', null, q ? 'no match' : 'no free models')); return; }
-    for (const m of pool) { const o = el('option', null, m); o.value = m; sel.appendChild(o); }
-    const prev = sel.dataset.prev;
-    if (prev && pool.includes(prev)) sel.value = prev;
-    renderModelList();
+    if (!pool.length) {
+      const o = el('option', null, st.all.length ? 'no active models' : 'no models');
+      o.value = '';
+      sel.appendChild(o);
+    } else {
+      for (const m of pool) {
+        const o = el('option', null, aliasOf(m) || m);
+        o.value = m;
+        sel.appendChild(o);
+      }
+      if (prev && pool.includes(prev)) sel.value = prev;
+    }
+    sel.dataset.prev = sel.value;
   }
-  si.addEventListener('input', applyFilter);
-  freeCb.addEventListener('change', () => { st.freeOnly = freeCb.checked; applyFilter(); });
+
+  function openAliasEdit(row, m, btn) {
+    if (row.querySelector('.ali-edit')) return;
+    const nameEl = row.querySelector('.mname');
+    const renEl = row.querySelector('.mrenamed');
+    if (nameEl) nameEl.hidden = true;
+    if (renEl) renEl.hidden = true;
+    btn.hidden = true;
+
+    const wrap = el('span', 'ali-edit');
+    const input = el('input', 'ali-input');
+    input.type = 'text';
+    input.value = aliasOf(m);
+    input.placeholder = 'Display name — blank clears';
+    input.maxLength = 64;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Display name for ' + m);
+    const okBtn = el('button', 'icon-btn');
+    okBtn.type = 'button';
+    okBtn.innerHTML = ICON.check;
+    okBtn.title = 'Save display name';
+    const xBtn = el('button', 'icon-btn');
+    xBtn.type = 'button';
+    xBtn.innerHTML = ICON.x;
+    xBtn.title = 'Cancel';
+
+    async function post(alias) {
+      okBtn.disabled = xBtn.disabled = true;
+      try {
+        await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, alias });
+        if (alias) st.aliases[keyOf(m)] = alias;
+        else delete st.aliases[keyOf(m)];
+        applySelect();
+        renderModelList();
+        toast(alias ? 'Display name saved' : 'Display name cleared', 'ok');
+      } catch (ex) {
+        okBtn.disabled = xBtn.disabled = false;
+        toast('Save failed', 'err');
+      }
+    }
+    function revert() {
+      renderModelList();
+      applySelect();
+    }
+    const save = () => post(input.value.trim());
+    okBtn.onclick = save;
+    xBtn.onclick = revert;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      else if (e.key === 'Escape') { e.preventDefault(); revert(); }
+    });
+
+    wrap.append(input, okBtn, xBtn);
+    row.insertBefore(wrap, btn);
+    input.focus();
+    input.select();
+  }
+
+  function modelRow(m) {
+    const row = el('div', 'mrow');
+    const active = isOn(m);
+    if (!active) row.classList.add('is-off');
+    const name = el('span', 'mname' + (isFreeModel(m) ? ' free' : ''), m);
+    name.title = m;
+    row.appendChild(name);
+    const al = aliasOf(m);
+    if (al) {
+      const ren = el('span', 'mrenamed', 'renamed');
+      ren.title = 'Display name: ' + al;
+      row.appendChild(ren);
+    }
+    const key = keyOf(m);
+    const editBtn = el('button', 'icon-btn m-alias-btn');
+    editBtn.type = 'button';
+    editBtn.innerHTML = ICON.edit;
+    editBtn.title = 'Edit display name';
+    editBtn.hidden = !active;
+    editBtn.onclick = () => openAliasEdit(row, m, editBtn);
+    const switchLabel = el('label', 'toggle');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.className = 'toggle-input';
+    cb.checked = active;
+    cb.setAttribute('aria-label', 'Activate ' + m);
+    const track = el('span', 'tg-track');
+    track.appendChild(el('span', 'tg-knob'));
+    switchLabel.append(cb, track);
+    cb.addEventListener('change', async () => {
+      st.vis[key] = cb.checked;
+      row.classList.toggle('is-off', !cb.checked);
+      editBtn.hidden = !cb.checked;
+      applySelect();
+      try { await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, enabled: cb.checked }); }
+      catch {
+        st.vis[key] = !cb.checked;
+        cb.checked = !cb.checked;
+        row.classList.toggle('is-off', !cb.checked);
+        editBtn.hidden = !cb.checked;
+        applySelect();
+        toast('Save failed', 'err');
+      }
+    });
+    row.append(editBtn, switchLabel);
+    return row;
+  }
 
   function renderModelList() {
     modelList.innerHTML = '';
-    const toShow = st.freeOnly ? st.all.filter(m => isFreeModel(m)) : st.all;
-    if (!toShow.length) { modelList.style.display = 'none'; return; }
-    modelList.style.display = '';
-    for (const m of toShow) {
-      const row = el('div', 'mrow');
-      const name = el('span', 'mname' + (isFreeModel(m) ? ' free' : ''), m);
-      name.title = m;
-      const switchLabel = el('label', 'toggle');
-      const cb = el('input');
-      cb.type = 'checkbox';
-      cb.className = 'toggle-input';
-      const key = p.id + '/' + m;
-      cb.checked = key in st.vis ? !!st.vis[key] : isFreeModel(m);
-      const track = el('span', 'tg-track');
-      track.appendChild(el('span', 'tg-knob'));
-      switchLabel.append(cb, track);
-      if (!cb.checked) row.classList.add('is-off');
-      cb.addEventListener('change', async () => {
-        st.vis[key] = cb.checked;
-        row.classList.toggle('is-off', !cb.checked);
-        try { await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, enabled: cb.checked }); }
-        catch { st.vis[key] = !cb.checked; cb.checked = !cb.checked; row.classList.toggle('is-off', !cb.checked); toast('Save failed', 'err'); }
-      });
-      row.append(name, switchLabel);
-      modelList.appendChild(row);
+    if (!st.all.length) { modelList.hidden = true; return; }
+    const q = si.value.trim().toLowerCase();
+    const rows = st.all.filter(m => !q || m.toLowerCase().includes(q) || aliasOf(m).toLowerCase().includes(q));
+    modelList.hidden = false;
+    if (!rows.length) {
+      modelList.appendChild(el('div', 'm-empty', 'No models match “' + si.value.trim() + '”'));
+      return;
     }
+    for (const m of rows) modelList.appendChild(modelRow(m));
   }
+
+  si.addEventListener('input', renderModelList);
+  freeCb.addEventListener('change', () => { st.freeOnly = freeCb.checked; applySelect(); });
 
   loadBtn.addEventListener('click', () => doLoad());
   testBtn.addEventListener('click', () => doTest());
@@ -447,15 +553,18 @@ function buildCard(p, index) {
     station.classList.add('is-probing');
     badge.hidden = false; badge.className = 'st-badge load'; badge.textContent = 'loading';
     res.className = 'output hollow loading'; res.textContent = 'Fetching catalog…';
-    modelList.innerHTML = '';
+    modelList.innerHTML = ''; modelList.hidden = true;
     try {
       const [d, visResp] = await Promise.all([callFn('models', { providerId: p.id }), callGet('model-visibility')]);
-      st.all = d.models;
+      st.all = d.models || [];
       st.vis = visResp.visibility || {};
-      applyFilter();
+      st.aliases = visResp.aliases || {};
+      si.value = '';
+      applySelect();
       if (p.defaultModel && st.filtered.includes(p.defaultModel)) sel.value = p.defaultModel;
       sel.dataset.prev = sel.value;
-      sel.disabled = false; si.disabled = false; si.value = '';
+      sel.disabled = false; si.disabled = false;
+      renderModelList();
       badge.className = 'st-badge ok'; badge.textContent = d.count + ' models';
       res.className = 'output hollow'; res.textContent = 'Catalog ready. Run a probe.';
       const nb = document.getElementById('nav-badge-' + p.id);
@@ -477,7 +586,7 @@ function buildCard(p, index) {
 
   async function doTest() {
     const model = (customModel.value || '').trim() || sel.value;
-    if (!model || model === 'no match' || model === 'no free models' || model === 'Loading…') return;
+    if (!model || model === 'Loading…') return;
     if (!customModel.value.trim()) sel.dataset.prev = model;
     setBusy(testBtn, true);
     station.classList.add('is-probing');

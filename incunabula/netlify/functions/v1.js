@@ -71,6 +71,33 @@ function isModelError(status, msg) {
   if (status === 404 || status === 410) return true; // not found / gone upstream
   return /unknown model|not found|no such model|does not exist|invalid model|model_not_found/i.test(String(msg || ''));
 }
+async function loadAliases() {
+  try {
+    const a = await storeGet('model-aliases', {});
+    return (a && typeof a === 'object') ? a : {};
+  } catch { return {}; }
+}
+// Serve renamed ids: "pid/model" -> stored display alias, with alias_of set
+// back to the canonical id so clients can resolve the original.
+function remapWithAliases(data, aliases) {
+  if (!aliases || !Object.keys(aliases).length) return data;
+  return data.map((m) => {
+    const a = m && typeof m.id === 'string' ? aliases[m.id] : undefined;
+    if (typeof a === 'string' && a) return { ...m, id: a, alias_of: m.id };
+    return m;
+  });
+}
+// Resolve a display alias back to its canonical "pid/model" id.
+// Aliases are additive: anything that is not an alias value passes through.
+async function resolveAliasId(name) {
+  const aliases = await loadAliases();
+  const keys = Object.keys(aliases).sort();
+  for (const k of keys) {
+    const v = aliases[k];
+    if (typeof v === 'string' && v && v === name) return k;
+  }
+  return name;
+}
 async function getModelIndex() {
   const CACHE_TTL = 5 * 60 * 1000;
   try {
@@ -159,8 +186,10 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'GET' && (path === '/v1/models' || path === '/v1')) {
     // Fast path: serve the cached catalogue (5-min TTL in KV). Building it
-    // fans out to every provider and can take 10s+ cold.
+    // fans out to every provider and can take 10s+ cold. Aliases are loaded
+    // on every request and re-mapped onto both cached and fresh data.
     const CACHE_TTL = 5 * 60 * 1000;
+    const aliases = await loadAliases();
     try {
       const cached = await storeGet('v1-models-cache', null);
       if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && Array.isArray(cached.data) && cached.data.length) {
@@ -169,7 +198,7 @@ exports.handler = async (event) => {
           const keys = await storeGet('api-keys', []);
           await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
         }
-        return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'HIT' }, body: JSON.stringify({ object: 'list', data: cached.data }) };
+        return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'HIT' }, body: JSON.stringify({ object: 'list', data: remapWithAliases(cached.data, aliases) }) };
       }
     } catch { /* build fresh */ }
     const { entries: rawEntries, byModel } = await collectModels();
@@ -203,13 +232,14 @@ exports.handler = async (event) => {
     if (data.length) {
       await storeSet('v1-models-cache', { at: Date.now(), data }).catch(() => {});
     }
-    return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'MISS' }, body: JSON.stringify({ object: 'list', data }) };
+    return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'MISS' }, body: JSON.stringify({ object: 'list', data: remapWithAliases(data, aliases) }) };
   }
 
   if (event.httpMethod === 'POST' && path === '/v1/chat/completions') {
     let body = {};
     try { body = JSON.parse(event.body || '{}'); } catch { return err(400, 'Bad request — body must be JSON'); }
-    const full = String(body.model || '');
+    let full = String(body.model || '');
+    full = await resolveAliasId(full);
     let providerId = '';
     let model = '';
     const slash = full.indexOf('/');
