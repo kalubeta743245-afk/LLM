@@ -58,6 +58,14 @@ const PROVIDERS = [
     apiKey: '',
     noAuth: true,
   },
+  {
+    id: 'apinex',
+    name: 'APInex',
+    tag: 'AX',
+    color: '#5C766D',
+    baseURL: 'https://api.apinex.bond/v1',
+    apiKey: '',
+  },
 ];
 
 function makeClient(provider) {
@@ -83,6 +91,7 @@ function providerFetch(provider) {
 const STATIC_MODELS = {
   tokenforge: ['gpt-6-astra', 'glm-5.3', 'glm-5.2', 'grok-4.5', 'deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-5', 'qwen3.8-27b', 'qwen3.8-max', 'claude-fable-5', 'glm-5.1', 'claude-haiku-4.5', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.7', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.4', 'gpt-5.5', 'o3', 'o3-pro', 'o4-mini', 'kimi-k3', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'mistral-large-3', 'mistral-small-4', 'minimax-m2', 'minimax-m2-7', 'qwen3.7-max'],
   tokenharbor: ['th-orchestra', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k3', 'glm-5.3', 'claude-opus-5'],
+  apinex: ['claude-fable-5.1', 'claude-opus-5', 'claude-opus-5.5', 'claude-sonnet-5', 'deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-v4.1-flash', 'free/claude-opus-4.6', 'free/claude-sonnet-4.6', 'free/deepseek-v4-flash-0731', 'free/deepseek-v4-pro-0813', 'free/deepseek-v4.1-flash', 'free/glm-5.3-flash', 'free/gemini-3.1-pro', 'free/gemini-3.8-flash', 'free/gpt-6-luna', 'free/hy4', 'free/kimi-k3', 'free/mimo-v2.6-flash', 'free/mimo-v2.6-pro', 'free/muse-spark-1.3', 'free/qwen-3.8-max', 'gemini-3.1-pro', 'gemini-3.8-flash', 'kimi-k3', 'gpt-5.6-terra', 'gpt-6-astra', 'gpt-6-luna', 'gpt-6-sol', 'glm-5.3', 'glm-5.2'],
 };
 
 function secretFor(id) {
@@ -93,6 +102,7 @@ function secretFor(id) {
     tokenharbor: 'TOKENHARBOR_API_KEY',
     tokenforge: 'TOKENFORGE_API_KEY',
     inception: 'INCEPTION_API_KEY',
+    apinex: 'APINEX_API_KEY',
   };
   const name = map[id];
   if (!name) return '';
