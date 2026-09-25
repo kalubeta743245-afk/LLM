@@ -1,6 +1,8 @@
 // Incunabula as an OpenAI-compatible gateway.
-//   GET  /v1/models                 — list every model as "<providerId>/<model>"
-//   POST /v1/chat/completions       — {model:"<providerId>/<model>", messages:[...]}
+//   GET  /v1/models                 — list every active model under its public name
+//   POST /v1/chat/completions       — {model:"<publicName>", messages:[...]}
+// Public names are provider-free: the model id by default, or the custom
+// display name when the owner set one. Provider routing stays internal.
 // Auth: none — open gateway, no key needed.
 // Non-streaming only. Reuses the existing chat/models handlers (ponytail).
 const { cors, storeGet, storeSet, getAllProviders, providerFetch, getOpenCodeModels } = require('./_shared');
@@ -77,24 +79,56 @@ async function loadAliases() {
     return (a && typeof a === 'object') ? a : {};
   } catch { return {}; }
 }
-// Serve renamed ids: "pid/model" -> stored display alias, with alias_of set
-// back to the canonical id so clients can resolve the original.
-function remapWithAliases(data, aliases) {
-  if (!aliases || !Object.keys(aliases).length) return data;
-  return data.map((m) => {
-    const a = m && typeof m.id === 'string' ? aliases[m.id] : undefined;
-    if (typeof a === 'string' && a) return { ...m, id: a, alias_of: m.id };
-    return m;
-  });
+// Public model name: the custom display name when set, otherwise the plain
+// model id. The routing provider prefix is never part of the public name.
+function publicName(providerId, model, aliases) {
+  const a = aliases[providerId + '/' + model];
+  if (typeof a === 'string' && a) return a;
+  return String(model);
 }
-// Resolve a display alias back to its canonical "pid/model" id.
+
+// Turn internal {providerId, model} entries into the public /v1/models list.
+// Names shared by several providers get ordered "-1".." -N" suffixes so every
+// listed id stays uniquely callable.
+function buildPublicList(entries, aliases) {
+  const groups = new Map();
+  for (const e of entries) {
+    const name = publicName(e.providerId, e.model, aliases);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(e);
+  }
+  const data = [];
+  for (const [name, group] of groups) {
+    group.sort((a, b) => (a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0));
+    if (group.length === 1) {
+      data.push({ id: name, object: 'model', owned_by: 'incunabula' });
+      continue;
+    }
+    group.forEach((_, i) => {
+      data.push({ id: name + '-' + (i + 1), object: 'model', owned_by: 'incunabula', p_index: i + 1, p_count: group.length });
+    });
+  }
+  return data;
+}
+// Resolve a display alias back to its canonical "pid/model" id. Also accepts
+// the ordered "<alias>-N" ids published for names shared by several providers.
 // Aliases are additive: anything that is not an alias value passes through.
 async function resolveAliasId(name) {
   const aliases = await loadAliases();
   const keys = Object.keys(aliases).sort();
+  const byValue = new Map();
   for (const k of keys) {
     const v = aliases[k];
-    if (typeof v === 'string' && v && v === name) return k;
+    if (typeof v !== 'string' || !v) continue;
+    if (!byValue.has(v)) byValue.set(v, []);
+    byValue.get(v).push(k);
+  }
+  if (byValue.has(name)) return byValue.get(name)[0];
+  const suffix = name.match(/^(.*)-(\d+)$/);
+  if (suffix && byValue.has(suffix[1])) {
+    const group = byValue.get(suffix[1]);
+    const n = parseInt(suffix[2], 10);
+    if (group[n - 1]) return group[n - 1];
   }
   return name;
 }
@@ -185,54 +219,36 @@ exports.handler = async (event) => {
   const keyEntry = await findKey(event).catch(() => null);
 
   if (event.httpMethod === 'GET' && (path === '/v1/models' || path === '/v1')) {
-    // Fast path: serve the cached catalogue (5-min TTL in KV). Building it
-    // fans out to every provider and can take 10s+ cold. Aliases are loaded
-    // on every request and re-mapped onto both cached and fresh data.
+    // Fast path: reuse the cached internal entries (5-min TTL). Public names
+    // are rebuilt on every request so a rename takes effect immediately.
     const CACHE_TTL = 5 * 60 * 1000;
     const aliases = await loadAliases();
+    let entries = null;
     try {
       const cached = await storeGet('v1-models-cache', null);
-      if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && Array.isArray(cached.data) && cached.data.length) {
-        if (keyEntry) {
-          keyEntry.lastUsed = Date.now();
-          const keys = await storeGet('api-keys', []);
-          await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
-        }
-        return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'HIT' }, body: JSON.stringify({ object: 'list', data: remapWithAliases(cached.data, aliases) }) };
+      if (cached && cached.at && (Date.now() - cached.at) < CACHE_TTL && Array.isArray(cached.entries) && cached.entries.length) {
+        entries = cached.entries;
       }
     } catch { /* build fresh */ }
-    const { entries: rawEntries, byModel } = await collectModels();
-    // Filter entries: only keep entries whose provider is still in byModel for that model.
-    const entries = rawEntries.filter((e) => {
-      const owners = byModel.get(e.model);
-      return owners && owners.has(e.providerId);
-    });
-    // Same exact name from 2+ providers: sort provider ids, aliases get -1..-N.
-    const rank = new Map();
-    for (const [name, set] of byModel) {
-      if (set.size < 2) continue;
-      const ids = [...set].sort();
-      ids.forEach((pid, i) => rank.set(pid + '/' + name, { n: i + 1, total: ids.length }));
+    const cacheHit = !!entries;
+    if (!entries) {
+      const collected = await collectModels();
+      // Only keep entries whose provider is still enabled for that model.
+      entries = collected.entries.filter((e) => {
+        const owners = collected.byModel.get(e.model);
+        return owners && owners.has(e.providerId);
+      });
+      if (entries.length) {
+        await storeSet('v1-models-cache', { at: Date.now(), entries }).catch(() => {});
+      }
     }
-    const data = [];
-    for (const e of entries) {
-      const r = rank.get(e.providerId + '/' + e.model);
-      // Canonical entries keep their EXACT names: "<providerId>/<model>".
-      const info = { id: e.providerId + '/' + e.model, object: 'model', owned_by: e.providerId };
-      if (r) { info.p_index = r.n; info.p_count = r.total; }
-      data.push(info);
-      // Duplicates also get callable aliases "<model>-1" … "<model>-N".
-      if (r) data.push({ id: e.model + '-' + r.n, object: 'model', owned_by: e.providerId, alias_of: e.providerId + '/' + e.model });
-    }
+    const data = buildPublicList(entries, aliases);
     if (keyEntry) {
       keyEntry.lastUsed = Date.now();
       const keys = await storeGet('api-keys', []);
       await storeSet('api-keys', keys.map((k) => (k.id === keyEntry.id ? keyEntry : k))).catch(() => {});
     }
-    if (data.length) {
-      await storeSet('v1-models-cache', { at: Date.now(), data }).catch(() => {});
-    }
-    return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': 'MISS' }, body: JSON.stringify({ object: 'list', data: remapWithAliases(data, aliases) }) };
+    return { statusCode: 200, headers: { ...cors(event.headers), 'X-Cache': cacheHit ? 'HIT' : 'MISS' }, body: JSON.stringify({ object: 'list', data }) };
   }
 
   if (event.httpMethod === 'POST' && path === '/v1/chat/completions') {
@@ -244,8 +260,8 @@ exports.handler = async (event) => {
     let model = '';
     const slash = full.indexOf('/');
     if (slash === -1) {
-      // Bare name. Exact match wins first (so real names ending in digits
-      // still work), then "<model>-N" aliases for duplicated names.
+      // Public name, no slash. Exact catalogue match wins first (so real
+      // names ending in digits still work), then ordered "-1".." -N" ids.
       const { byModel } = await getModelIndex();
       const direct = [...(byModel.get(full) || [])].sort();
       if (direct.length === 1) {
@@ -254,25 +270,23 @@ exports.handler = async (event) => {
       } else if (direct.length > 1) {
         return err(400, 'Ambiguous model "' + full + '" — use one of: ' + direct.map((_, i) => full + '-' + (i + 1)).join(', '));
       } else {
-        const alias = full.match(/^(.*)-(\d+)$/);
-        if (!alias) return err(400, 'model must look like "<providerId>/<model>" — see GET /v1/models');
-        const ids = [...(byModel.get(alias[1]) || [])].sort();
-        const n = parseInt(alias[2], 10);
-        if (!ids[n - 1]) return err(400, 'Unknown model alias: ' + full);
+        const suffix = full.match(/^(.*)-(\d+)$/);
+        if (!suffix) return err(400, 'Unknown model "' + full + '" — see GET /v1/models');
+        const ids = [...(byModel.get(suffix[1]) || [])].sort();
+        const n = parseInt(suffix[2], 10);
+        if (!ids[n - 1]) return err(400, 'Unknown model "' + full + '" — see GET /v1/models');
         providerId = ids[n - 1];
-        model = alias[1];
+        model = suffix[1];
       }
     } else {
       providerId = full.slice(0, slash);
       model = full.slice(slash + 1);
-      if (!model) return err(400, 'model must look like "<providerId>/<model>"');
+      if (!model) return err(400, 'model must look like "<model>" or "<model>-N" — see GET /v1/models');
     }
     const providers = await getAllProviders();
     let provider = providers.find((p) => p.id === providerId);
     if (!provider) {
-      // Unknown prefix: third-party clients send the raw upstream id
-      // ("z-ai/glm-5.3-flash-free"). Search every catalogue for the FULL
-      // string and route to its owner — like other OpenAI-compatible bases.
+      // No provider owns that prefix: the whole string is the model id.
       const { byModel } = await getModelIndex();
       const owners = [...(byModel.get(full) || [])].sort();
       if (owners.length === 1) {
@@ -280,9 +294,9 @@ exports.handler = async (event) => {
         model = full;
         provider = providers.find((p) => p.id === providerId);
       } else if (owners.length > 1) {
-        return err(400, 'Ambiguous model "' + full + '" — use one of: ' + owners.map((pid) => pid + '/' + full).join(', '));
+        return err(400, 'Ambiguous model "' + full + '" — use one of: ' + owners.map((_, i) => full + '-' + (i + 1)).join(', '));
       } else {
-        return err(404, 'Unknown provider: ' + providerId);
+        return err(404, 'Unknown model: ' + full);
       }
     }
     // Thin pipe: forward the client's body verbatim to the real provider
@@ -362,6 +376,13 @@ exports.handler = async (event) => {
         if (alternatesLoaded) break;
         alternatesLoaded = true;
         const { byModel } = await getModelIndex();
+        // A public name may itself start with a provider id ("nvidia/…"
+        // listed by another station). Try that exact owner first.
+        const owners = [...(byModel.get(full) || [])].filter((p) => p !== providerId).sort();
+        if (owners.length) {
+          const ownerProvider = providers.find((p) => p.id === owners[0]);
+          if (ownerProvider) candidates.push({ provider: ownerProvider, model: full });
+        }
         const alt = findAlternateModel(model, providerId, byModel);
         if (alt) {
           const altProvider = providers.find((p) => p.id === alt.providerId);
