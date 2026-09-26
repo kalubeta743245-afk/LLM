@@ -34,10 +34,10 @@ All prompts run through YOUR local OpenCode CLI - nothing leaves your PC.
 
 ## CORS-bypass proxy (`/api/proxy`)
 
-Browser-only workaround for calling `xpart.netlify.app` (and its sub-URLs) from a
-page whose origin the target does not send CORS headers for. Point the client at
-this app's own origin instead; the proxy forwards the call and hands the response
-back with CORS headers attached, so the browser accepts it.
+Browser-only workaround for calling **any public url** from a page whose origin
+that target does not send CORS headers for. Point the client at this app's own
+origin instead; the proxy forwards the call and hands the response back with
+CORS headers attached, so the browser accepts it.
 
 Same handler on every runtime (Cloudflare Worker, Netlify, `node server.js`):
 
@@ -47,8 +47,12 @@ Same handler on every runtime (Cloudflare Worker, Netlify, `node server.js`):
   Cloudflare Worker, whose `/api/(.+)` route keeps the query string out of the
   function event. Browsers can set that header after the `204` preflight.
 
+Prefix any url:
+
 ```bash
 curl "https://<this-app>/api/proxy?url=https://xpart.netlify.app/v1/models"
+curl "https://<this-app>/api/proxy?url=https://xpart.netlify.app/aichat"
+curl "https://<this-app>/api/proxy?url=https://api.github.com/repos/anthropics/anthropic-sdk-typescript"
 
 # POST with a body, the form the Worker needs
 curl -X POST https://<this-app>/api/proxy \
@@ -58,22 +62,25 @@ curl -X POST https://<this-app>/api/proxy \
   -d '{"hello":"world"}'
 ```
 
+URL-encode the target when it carries its own `?` or `&`, otherwise the outer
+query parser splits it (`%3F` for a nested `?`).
+
 In the browser:
 
 ```js
-await fetch('/api/proxy', {
-  method: 'POST',
-  headers: { 'x-proxy-url': 'https://xpart.netlify.app/api/thing', 'content-type': 'application/json' },
-  body: JSON.stringify({ hello: 'world' }),
-}).then((r) => r.json());
+await fetch('/api/proxy?url=' + encodeURIComponent('https://xpart.netlify.app/api/thing'))
+  .then((r) => r.json());
 ```
 
-**Allowlist, not a relay.** The only reachable targets are `xpart.netlify.app`
-and `*.xpart.netlify.app` (any subdomain, any depth), `http:`/`https:` only, on
-the default port only. Everything else is `403` *before* any request is made, and
-redirects are re-checked against the same rule. A path-style
-(`/api/proxy/https/host/rest`) form is deliberately not supported — pass the
-absolute URL in `?url=` or the header instead.
+**Open to any public target.** `http:`/`https:` only, any host, any port, any
+path, any subdomain. Two guards remain and neither affects normal use: private
+and loopback destinations are refused (`403`) *before* any socket is opened —
+loopback, RFC1918, link-local (which is where cloud metadata at
+`169.254.169.254` lives), CGNAT, multicast, unique-local IPv6, and the
+`.local`/`.internal`/`.localhost` suffixes — and redirect hops are re-checked
+against the same rule, so a public target cannot bounce the proxy into an
+internal one. A path-style (`/api/proxy/https/host/rest`) form is deliberately
+not supported; pass the absolute URL in `?url=` or the header instead.
 
 Other limits: 4 MB max request body (`413`), 60 s per-request timeout (`504`),
 max 3 redirect hops, `OPTIONS` returns `204`. Client headers are forwarded

@@ -1,19 +1,19 @@
-// Same-origin CORS-bypass proxy. Browser clients talk to this app's own origin
-// and get xpart.netlify.app back with CORS headers attached, so a browser never
-// has to pass a CORS check against the target.
+// Same-origin CORS-bypass proxy. Prefix any target url with this app's own
+// origin and the browser gets it back with CORS headers attached, so a browser
+// never has to pass the target's own CORS check.
 //
-//   GET|POST|PUT|PATCH|DELETE /api/proxy?url=https://xpart.netlify.app/<path>
-//   GET|POST|PUT|PATCH|DELETE /.netlify/functions/proxy?url=<absolute-url>
+//   GET|POST|PUT|PATCH|DELETE /api/proxy?url=<any-absolute-url>
+//   GET|POST|PUT|PATCH|DELETE /.netlify/functions/proxy?url=<any-absolute-url>
 //   ...or the same routes with the target in an `x-proxy-url` header (browsers
 //   may set it after the 204 preflight; the Cloudflare Worker route keeps the
 //   query string out of the event, so this is the form that always works).
 //
-// NOT a relay. The allowlist is the whole security model: only
-// xpart.netlify.app and its subdomains, http(s) only, default ports only —
-// checked before any socket is opened, and re-checked on every redirect hop.
+// Open to any public destination. Two guards stay on, both invisible to normal
+// use: http(s) only, and no private/loopback/link-local destinations — a
+// public url prefix never hits either, but without them this worker would be a
+// working SSRF into cloud metadata (169.254.169.254) and internal services.
 const { cors } = require('./_shared');
 
-const ALLOW_HOST = 'xpart.netlify.app';
 const MAX_BODY = 4 * 1024 * 1024; // 4 MB of request body forwarded, hard stop
 const TIMEOUT_MS = 60000;          // per hop, fetch + body read
 const MAX_HOPS = 3;                // redirect hops followed
@@ -30,7 +30,6 @@ const STRIP = new Set([
   'te', 'trailer', 'accept-encoding', 'content-encoding', 'expect',
 ]);
 const stripHeader = (k) => STRIP.has(k) || k.startsWith('cf-') || k.startsWith('access-control-request-');
-const LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 function err(status, message, reqHeaders) {
   return {
@@ -48,15 +47,37 @@ function pass(status, text, contentType, reqHeaders) {
   };
 }
 
-// Exact host, or a real subdomain of it. Compared on whole DNS labels, never as
-// a bare prefix: "xpart.netlify.app.evil.com" and "evilxpart.netlify.app" both
-// fail, and a trailing-dot FQDN ("xpart.netlify.app.") is rejected too — it
-// serializes to a different Host header, so it is not the same target.
-function hostAllowed(hostname) {
-  const h = String(hostname || '').toLowerCase();
-  if (h === ALLOW_HOST) return true;
-  if (!h.endsWith('.' + ALLOW_HOST)) return false;
-  return h.slice(0, h.length - ALLOW_HOST.length - 1).split('.').every((l) => LABEL.test(l));
+// Destinations that are not publicly routable. Blocking these is what keeps
+// this from being an SSRF pivot into the runtime's own network: loopback,
+// RFC1918, link-local (which is where cloud metadata lives), carrier NAT,
+// unique-local IPv6, and the .local/.internal/.localhost suffixes.
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.home.arpa')) return true;
+  // Any target given as a bare IP literal.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+    const p = h.split('.').map(Number);
+    if (p.some((n) => n > 255)) return true;
+    if (p[0] === 0 || p[0] === 10 || p[0] === 127) return true;
+    if (p[0] === 169 && p[1] === 254) return true;                 // link-local + metadata
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;      // 172.16/12
+    if (p[0] === 192 && p[1] === 168) return true;                  // 192.168/16
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;    // 100.64/10 CGNAT
+    if (p[0] >= 224) return true;                                   // multicast + reserved
+    return false;
+  }
+  // IPv6 literals: ::1 loopback, fe80::/10 link-local, fc00::/7 unique-local,
+  // ::ffff:a.b.c.d mapped IPv4 (unwrap and re-check), and the unspecified address.
+  if (h.includes(':')) {
+    if (h === '::' || h === '::1') return true;
+    const v4 = h.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (h.startsWith('::ffff:') && v4) return isPrivateHost(v4[1]);
+    if (/^fe[89ab]/.test(h)) return true;
+    if (/^f[cd]/.test(h)) return true;
+    return false;
+  }
+  return false;
 }
 
 // Single choke point for every URL we are about to fetch, including redirects.
@@ -65,16 +86,13 @@ function checkTarget(raw, reqHeaders) {
   try {
     u = new URL(String(raw));
   } catch {
-    return { error: err(400, 'Invalid url — pass an absolute url, e.g. https://xpart.netlify.app/', reqHeaders) };
+    return { error: err(400, 'Invalid url — pass an absolute url, e.g. https://example.com/path', reqHeaders) };
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') {
     return { error: err(403, 'Only http: and https: targets are allowed', reqHeaders) };
   }
-  if (!hostAllowed(u.hostname)) {
-    return { error: err(403, 'Host not allowed — this proxy only forwards to ' + ALLOW_HOST + ' and its subdomains', reqHeaders) };
-  }
-  if (u.port) {
-    return { error: err(403, 'Non-default port not allowed (use the default http/https port)', reqHeaders) };
+  if (isPrivateHost(u.hostname)) {
+    return { error: err(403, 'Private and loopback destinations are not proxied', reqHeaders) };
   }
   u.hash = '';
   return { target: u };
@@ -181,9 +199,10 @@ exports.handler = async (event) => {
         if (res.text === null) return err(502, 'Upstream body is not UTF-8 text and cannot be proxied', reqHeaders);
         return pass(res.status, res.text, type, reqHeaders);
       }
-      // Off-allowlist (or unparseable) Location: hand back the 3xx status with
-      // CORS headers but no Location, so no client is walked off the allowlist
-      // and no Authorization header we forwarded rides along with it.
+      // Rejected hop (private/unparseable Location): hand back the 3xx status
+      // with CORS headers but no Location, so no client is walked onto a
+      // blocked destination and no Authorization header we forwarded rides
+      // along with it.
       let next = { error: true };
       if (res.location) {
         try {
