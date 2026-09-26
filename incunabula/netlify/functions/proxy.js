@@ -8,10 +8,18 @@
 //   may set it after the 204 preflight; the Cloudflare Worker route keeps the
 //   query string out of the event, so this is the form that always works).
 //
-// DESTINATION ALLOWLIST — two modes behind one stored flag (`proxy-mode` in the
-// shared store). Default is "xpart" and it can only be changed through the
-// password-gated control endpoint below; an unset store, an unknown value or a
-// failed store read all resolve to "xpart", never to "universal".
+// DESTINATION ALLOWLIST — two modes behind one flag. Default is "xpart" and it
+// can only be changed through the password-gated control endpoint below; an
+// unset store, an unknown value or a failed store read all resolve to "xpart",
+// never to "universal".
+//
+// The flag lives in a Durable Object on the Worker (strongly consistent: one
+// global instance serialises every read and write, so a flip is visible to the
+// very next request from every isolate) and falls back to the shared store
+// (`proxy-mode` in KV/Blobs/.data file) on Netlify and `node server.js`, which
+// are single-instance runtimes with no cross-isolate staleness. There is
+// deliberately NO cache of the value in any runtime: a cached flag is exactly
+// what let "universal" keep working after it had been switched off.
 //
 //   "xpart" (default) — the allowlist is closed, not open. Only
 //     `xpart.netlify.app` and its subdomains (any depth, any path) are ever
@@ -54,20 +62,13 @@ const ALLOWED_SUFFIX = '.' + ALLOWED_HOST; // label-anchored, never a bare prefi
 const SHARED_CACHE = 'public, max-age=60';  // default for cacheable GET/HEAD
 const NO_CACHE = 'no-cache, no-transform';  // event streams must never be cached
 
-const MODE_KEY = 'proxy-mode';          // shared store key
+const MODE_KEY = 'proxy-mode';          // shared store key (Netlify/local fallback)
 const MODE_XPART = 'xpart';
 const MODE_UNIVERSAL = 'universal';
 const DEFAULT_MODE = MODE_XPART;        // fail closed: never default to universal
-const MODE_TTL_MS = 10000;              // module-scope mode cache lifetime
 const MODE_ACTION_RE = /"action"\s*:\s*"mode"/; // cheap pre-filter, see isModeWriteBody
-
-// The mode is read on the hot path, the store is not. Module scope (per worker
-// isolate / lambda instance) holds the last value for MODE_TTL_MS; a cold or
-// stale read is de-duplicated so a burst of concurrent requests costs one store
-// read, not one each. A successful write updates this immediately, so the very
-// next request sees the new mode instead of waiting out the TTL.
-let modeCache = { mode: DEFAULT_MODE, at: 0 };
-let modePending = null;
+const MODE_DO_NAME = 'proxy-mode';      // the one global Durable Object instance
+const MODE_DO_URL = 'https://do/mode'; // its internal control URL
 
 // Hop-by-hop, host-bound, cookie and edge headers that must never be replayed
 // onto the target. accept-encoding/content-encoding are dropped as well so the
@@ -138,32 +139,44 @@ function normalizeMode(raw) {
   return s === MODE_UNIVERSAL ? MODE_UNIVERSAL : MODE_XPART;
 }
 
-function setModeCache(mode) {
-  modeCache = { mode, at: Date.now() };
+// The Durable Object namespace, when this runtime binds one (Cloudflare Worker).
+// Absent on Netlify Functions and `node server.js`, which use the shared store.
+function modeDo() {
+  try {
+    const ns = globalThis && globalThis.PROXY_MODE;
+    if (ns && typeof ns.get === 'function' && typeof ns.idFromName === 'function') return ns;
+  } catch { /* no DO binding */ }
+  return null;
 }
 
-// The mode for this request. Cached in module scope for MODE_TTL_MS, so the
-// streaming fast path never touches the store; a failed or slow read degrades to
-// the default and is cached like any other result (one retry per TTL, not one
-// per request).
+// One round trip to a single-threaded object in the same region. Intentionally
+// NOT wrapped in a cache: this is the read that has to be strongly consistent,
+// and a same-region DO call is far cheaper than the upstream request it guards.
+async function callModeDo(ns, init) {
+  const stub = ns.get(ns.idFromName(MODE_DO_NAME));
+  const res = await stub.fetch(MODE_DO_URL, init);
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = null; }
+  return { ok: !!(res && res.ok), status: res && res.status, payload };
+}
+
+// The mode for this request, read fresh every time — on the Worker through the
+// Durable Object, elsewhere through the shared store. A failed or unreadable
+// source degrades to the default (xpart), so the failure mode is a closed
+// allowlist, never a silently widened proxy.
 async function currentMode() {
-  const now = Date.now();
-  if (modeCache.at && now - modeCache.at < MODE_TTL_MS) return modeCache.mode;
-  if (modePending) return modePending;
-  modePending = (async () => {
-    let mode = DEFAULT_MODE;
+  const ns = modeDo();
+  if (ns) {
     try {
-      mode = normalizeMode(await storeGet(MODE_KEY, null));
+      return normalizeMode((await callModeDo(ns)).payload);
     } catch {
-      mode = DEFAULT_MODE;
+      return DEFAULT_MODE;
     }
-    setModeCache(mode);
-    return mode;
-  })();
+  }
   try {
-    return await modePending;
-  } finally {
-    modePending = null;
+    return normalizeMode(await storeGet(MODE_KEY, null));
+  } catch {
+    return DEFAULT_MODE;
   }
 }
 
@@ -211,8 +224,8 @@ function controlIntent(event, method) {
 
 // The write half of the control endpoint. Password first (same checkPassword and
 // same { ok:false, error:"Wrong password" } envelope as api-keys.js), then the
-// mode value, then the store — and only a completed write updates the cache, so
-// a failed persist can never desync the hot path from the store.
+// mode value, then the store. A 200 is only returned after the write has landed,
+// so a caller that flips the mode and immediately re-reads sees the new value.
 async function setMode(event, reqHeaders) {
   let body;
   try {
@@ -228,12 +241,24 @@ async function setMode(event, reqHeaders) {
   if (mode !== MODE_XPART && mode !== MODE_UNIVERSAL) {
     return modeOut(400, { ok: false, error: 'Invalid mode — use "xpart" or "universal"' }, reqHeaders);
   }
+  const ns = modeDo();
   try {
-    await storeSet(MODE_KEY, mode);
+    if (ns) {
+      const r = await callModeDo(ns, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      if (!r.ok) {
+        const why = (r.payload && typeof r.payload.error === 'string' && r.payload.error) || ('durable object returned ' + r.status);
+        return modeOut(502, { ok: false, error: 'Could not store proxy mode: ' + why.slice(0, 200) }, reqHeaders);
+      }
+    } else {
+      await storeSet(MODE_KEY, mode);
+    }
   } catch (e) {
     return modeOut(502, { ok: false, error: 'Could not store proxy mode: ' + String((e && e.message) || e).slice(0, 200) }, reqHeaders);
   }
-  setModeCache(mode); // visible to the next request, no TTL wait
   return modeOut(200, { ok: true, mode }, reqHeaders);
 }
 
@@ -495,7 +520,9 @@ exports.handler = async (event) => {
   const raw = targetFrom(event);
   if (!raw) return err(400, 'Missing target — use /api/proxy?url=https://xpart.netlify.app/... or the x-proxy-url header', reqHeaders);
 
-  // Served from the module-scope cache, so this is a field read on the hot path.
+  // Read fresh on every proxied request: one DO round trip on the Worker, one
+  // store read elsewhere. No cache, so the next request after a flip already
+  // sees the new mode.
   const mode = await currentMode();
   const checked = checkTarget(raw, reqHeaders, mode);
   if (checked.error) return checked.error;

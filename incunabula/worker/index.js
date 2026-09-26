@@ -76,6 +76,7 @@ export default {
   async fetch(request, env, ctx) {
     try {
       if (env.MODELLAB_KV) globalThis.MODELLAB_KV = env.MODELLAB_KV;
+      if (env.PROXY_MODE) globalThis.PROXY_MODE = env.PROXY_MODE;
       if (env.SITE_PASSWORD) globalThis.SITE_PASSWORD = env.SITE_PASSWORD;
       for (const k of ['NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'INCEPTION_API_KEY', 'APINEX_API_KEY']) {
         if (env[k]) globalThis[k] = env[k];
@@ -105,3 +106,7 @@ export default {
     return res;
   },
 };
+
+// The Durable Object class lives in its own module but `main` stays
+// worker/index.js, so it is re-exported here for wrangler to find and bind.
+export { ProxyMode } from './proxy-mode-do.js';

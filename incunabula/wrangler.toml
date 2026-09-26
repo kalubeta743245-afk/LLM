@@ -14,3 +14,14 @@ binding = "MODELLAB_KV"
 id = "51ffb6751cb048fcb72bad15816bb342"
 
 [vars]
+
+# Strongly-consistent store for the proxy destination mode. KV is eventually
+# consistent, so a mode flip could not be reliably turned off across isolates;
+# a single global Durable Object serialises all reads and writes instead.
+[[durable_objects.bindings]]
+name = "PROXY_MODE"
+class_name = "ProxyMode"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ProxyMode"]
