@@ -746,6 +746,7 @@ function wireGateway() {
 // you copy is exactly what Test asks for.
 function wireProxyPanel() {
   const baseOut = document.getElementById('px-base');
+  const fullOut = document.getElementById('px-full');
   const target = document.getElementById('px-target');
   const sub = document.getElementById('px-path');
   const out = document.getElementById('px-out');
@@ -757,6 +758,10 @@ function wireProxyPanel() {
   const noteUni = document.getElementById('px-note-universal');
   const noteX = document.getElementById('px-note-xpart');
   if (!baseOut || !target || !sub) return;
+
+  // The base is the bare prefix you paste into any app's "base URL" field.
+  // Whatever the user wants to reach goes after the trailing "=".
+  const PREFIX = location.origin + '/api/proxy?url=';
 
   // 'aichat' and '/aichat' are the same sub base, and '/' collapses to nothing
   // so 'https://xpart.netlify.app' never turns into a double slash.
@@ -771,11 +776,15 @@ function wireProxyPanel() {
   function proxyUrl(extra) {
     let joined = String(target.value || '').trim().replace(/\/+$/, '') + subPath() + String(extra || '');
     if (needsEncode()) joined = encodeURIComponent(joined);
-    return location.origin + '/api/proxy?url=' + joined;
+    return PREFIX + joined;
   }
   function sync() {
-    baseOut.value = proxyUrl('');
-    baseOut.title = baseOut.value;
+    baseOut.value = PREFIX;
+    baseOut.title = 'Paste this as the base URL, then append any url after the =';
+    if (fullOut) {
+      fullOut.value = proxyUrl('');
+      fullOut.title = fullOut.value;
+    }
     const cur = subPath() || '/';
     if (pillsBox) pillsBox.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', b.dataset.path === cur));
   }
@@ -789,6 +798,9 @@ function wireProxyPanel() {
     sync();
   });
   document.getElementById('px-base-copy')?.addEventListener('click', (e) => copy(baseOut.value, e.currentTarget));
+  document.getElementById('px-full-copy')?.addEventListener('click', (e) => {
+    if (fullOut && fullOut.value) copy(fullOut.value, e.currentTarget);
+  });
   testBtn?.addEventListener('click', async () => {
     if (!String(target.value || '').trim()) {
       if (out) { out.className = 'output err'; out.textContent = '✗ Set a target host first.'; }

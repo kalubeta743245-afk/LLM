@@ -581,6 +581,14 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
               <span>Test</span>
             </button>
           </div>
+          <div class="cred-line">
+            <span class="cred-k">Proxied</span>
+            <input class="cred-v" id="px-full" readonly aria-label="Composed proxy URL for this target">
+            <button class="btn btn-sm" id="px-full-copy" title="Copy this composed url">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
           <div class="pills" id="px-pills">
             <button class="pill on" type="button" data-path="/">/</button>
             <button class="pill" type="button" data-path="/aichat">/aichat</button>
@@ -598,7 +606,7 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
             <span id="px-note-xpart">On: any public host. Off: xpart.netlify.app only.</span>
             <span id="px-note-universal" hidden>Universal mode is on — this proxy will forward to any public host.</span>
           </p>
-          <p class="hint">This origin attaches the CORS headers for you — append any path after the base.</p>
+          <p class="hint">Copy the base, then append any url after the <span style="font-family:var(--mono)">=</span> — the CORS headers come from this origin.</p>
           <div class="output" id="px-out">No probe yet. Set a target and press Test.</div>
         </div>
       </section>
@@ -674,6 +682,6 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="app.js?v=71"></script>
+<script src="app.js?v=72"></script>
 </body>
 </html>
