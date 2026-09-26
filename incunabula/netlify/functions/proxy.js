@@ -8,20 +8,40 @@
 //   may set it after the 204 preflight; the Cloudflare Worker route keeps the
 //   query string out of the event, so this is the form that always works).
 //
-// DESTINATION ALLOWLIST — closed, not open. Only `xpart.netlify.app` and its
-// subdomains (any depth, any path) are ever forwarded to. The match is on whole
-// DNS labels off `URL.hostname` (userinfo already stripped by the parser), so
-// `xpart.netlify.app.evil.com`, `evilxpart.netlify.app`,
-// `xpart.netlify.app%2eevil.com`, `xpart.netlify.app@evil.com` and the
-// trailing-dot FQDN `xpart.netlify.app.` are all rejected with 403 before a
-// socket is opened. `http:`/`https:` only, and default ports only (80/443 — the
-// parser already normalises those away, so any surviving `u.port` is refused).
+// DESTINATION ALLOWLIST — two modes behind one stored flag (`proxy-mode` in the
+// shared store). Default is "xpart" and it can only be changed through the
+// password-gated control endpoint below; an unset store, an unknown value or a
+// failed store read all resolve to "xpart", never to "universal".
 //
-// Two SSRF guards stay layered on top of the allowlist, invisible to normal
-// use and free: no private/loopback/link-local destinations (.local/.internal/
+//   "xpart" (default) — the allowlist is closed, not open. Only
+//     `xpart.netlify.app` and its subdomains (any depth, any path) are ever
+//     forwarded to. The match is on whole DNS labels off `URL.hostname`
+//     (userinfo already stripped by the parser), so `xpart.netlify.app.evil.com`,
+//     `evilxpart.netlify.app`, `xpart.netlify.app%2eevil.com`,
+//     `xpart.netlify.app@evil.com` and the trailing-dot FQDN
+//     `xpart.netlify.app.` are all rejected with 403 before a socket is opened.
+//   "universal" — the site admin has deliberately widened the proxy to any
+//     public host, so the xpart allowlist check is skipped. Every other guard
+//     below is unchanged, and checkTarget is still the single choke point.
+//
+// In BOTH modes: `http:`/`https:` only, default ports only (80/443 — the parser
+// already normalises those away, so any surviving `u.port` is refused), and two
+// SSRF guards stay layered on top of the allowlist, invisible to normal use and
+// free: no private/loopback/link-local destinations (.local/.internal/
 // .localhost, RFC1918, CGNAT, 169.254.169.254 cloud metadata). Every redirect
-// hop is re-validated through the same checkTarget.
-const { cors } = require('./_shared');
+// hop is re-validated through the same checkTarget. A universal-mode request to
+// a private address is still 403 — widening the allowlist does not open the
+// runtime's own network.
+//
+// CONTROL ENDPOINT (mode only — never a proxy request):
+//   GET  /api/proxy?action=mode                                  -> { ok, mode }
+//   POST /api/proxy  { action:"mode", mode:"xpart"|"universal", password }
+// A POST is only a control request when the body says `action: "mode"` at the
+// top level, so a chat POST carrying {"model":…,"messages":[…]} is always
+// forwarded, never swallowed. Reading the flag needs no password (it reveals a
+// boolean); writing it uses the same checkPassword as api-keys.js.
+const { cors, storeGet, storeSet } = require('./_shared');
+const { checkPassword } = require('./auth');
 
 const MAX_BODY = 4 * 1024 * 1024; // 4 MB of request body forwarded, hard stop
 const TIMEOUT_MS = 60000;          // per hop: fetch + the streamed body
@@ -33,6 +53,21 @@ const ALLOWED_HOST = 'xpart.netlify.app';
 const ALLOWED_SUFFIX = '.' + ALLOWED_HOST; // label-anchored, never a bare prefix
 const SHARED_CACHE = 'public, max-age=60';  // default for cacheable GET/HEAD
 const NO_CACHE = 'no-cache, no-transform';  // event streams must never be cached
+
+const MODE_KEY = 'proxy-mode';          // shared store key
+const MODE_XPART = 'xpart';
+const MODE_UNIVERSAL = 'universal';
+const DEFAULT_MODE = MODE_XPART;        // fail closed: never default to universal
+const MODE_TTL_MS = 10000;              // module-scope mode cache lifetime
+const MODE_ACTION_RE = /"action"\s*:\s*"mode"/; // cheap pre-filter, see isModeWriteBody
+
+// The mode is read on the hot path, the store is not. Module scope (per worker
+// isolate / lambda instance) holds the last value for MODE_TTL_MS; a cold or
+// stale read is de-duplicated so a burst of concurrent requests costs one store
+// read, not one each. A successful write updates this immediately, so the very
+// next request sees the new mode instead of waiting out the TTL.
+let modeCache = { mode: DEFAULT_MODE, at: 0 };
+let modePending = null;
 
 // Hop-by-hop, host-bound, cookie and edge headers that must never be replayed
 // onto the target. accept-encoding/content-encoding are dropped as well so the
@@ -80,8 +115,132 @@ function err(status, message, reqHeaders) {
   return jsonOut(status, { ok: false, error: message }, reqHeaders);
 }
 
+// Control responses (mode read/write) are never cacheable: a cached flag would
+// keep telling the UI about a mode it just changed, and a cached 401/400 would
+// outlive the password that fixes it. Same { ok, error } envelope as api-keys.js.
+function modeOut(status, payload, reqHeaders) {
+  return {
+    statusCode: status,
+    headers: { ...cors(reqHeaders), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    body: JSON.stringify(payload),
+  };
+}
+
+function modeTag(mode) {
+  return ' (proxy mode: ' + mode + ')';
+}
+
+// Anything that is not literally "universal" is "xpart" — a garbled, missing or
+// half-written store value fails closed rather than silently opening the proxy.
+function normalizeMode(raw) {
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw.mode : raw;
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  return s === MODE_UNIVERSAL ? MODE_UNIVERSAL : MODE_XPART;
+}
+
+function setModeCache(mode) {
+  modeCache = { mode, at: Date.now() };
+}
+
+// The mode for this request. Cached in module scope for MODE_TTL_MS, so the
+// streaming fast path never touches the store; a failed or slow read degrades to
+// the default and is cached like any other result (one retry per TTL, not one
+// per request).
+async function currentMode() {
+  const now = Date.now();
+  if (modeCache.at && now - modeCache.at < MODE_TTL_MS) return modeCache.mode;
+  if (modePending) return modePending;
+  modePending = (async () => {
+    let mode = DEFAULT_MODE;
+    try {
+      mode = normalizeMode(await storeGet(MODE_KEY, null));
+    } catch {
+      mode = DEFAULT_MODE;
+    }
+    setModeCache(mode);
+    return mode;
+  })();
+  try {
+    return await modePending;
+  } finally {
+    modePending = null;
+  }
+}
+
+// Query lookup across the three shapes the runtimes hand us: Netlify's parsed
+// map, the Worker's rawQuery, and `node server.js`, which only has a path.
+function queryParam(event, name) {
+  const q = event.queryStringParameters;
+  if (q && typeof q === 'object' && q[name] != null && String(q[name]) !== '') return String(q[name]);
+  const raw = event.rawQuery ? String(event.rawQuery) : '';
+  if (raw) {
+    const v = new URLSearchParams(raw).get(name);
+    if (v) return v;
+  }
+  const withQuery = String(event.path || '');
+  const at = withQuery.indexOf('?');
+  if (at !== -1) {
+    const v = new URLSearchParams(withQuery.slice(at + 1)).get(name);
+    if (v) return v;
+  }
+  return '';
+}
+
+// A control write is opted into by the literal field pair at the top level. The
+// regex pre-filter means an ordinary chat body ({model, messages, …}) is never
+// even parsed, let alone diverted; a body that merely mentions "action" deeper
+// down parses and then fails the top-level check, so it still proxies.
+function isModeWriteBody(event) {
+  const raw = event.body == null ? '' : String(event.body);
+  if (!MODE_ACTION_RE.test(raw)) return false;
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return false; }
+  return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.action === 'mode';
+}
+
+function controlIntent(event, method) {
+  if (queryParam(event, 'action') === 'mode') {
+    if (method === 'GET' || method === 'HEAD') return 'read';
+    // Query-side intent on a write counts only when the body is empty; a JSON
+    // body always has to declare action: "mode" for itself.
+    if (method === 'POST' && !String(event.body == null ? '' : event.body).trim()) return 'write';
+  }
+  if (method === 'POST' && isModeWriteBody(event)) return 'write';
+  return null;
+}
+
+// The write half of the control endpoint. Password first (same checkPassword and
+// same { ok:false, error:"Wrong password" } envelope as api-keys.js), then the
+// mode value, then the store — and only a completed write updates the cache, so
+// a failed persist can never desync the hot path from the store.
+async function setMode(event, reqHeaders) {
+  let body;
+  try {
+    body = JSON.parse(String(event.body == null ? '' : event.body) || '{}');
+  } catch {
+    return modeOut(400, { ok: false, error: 'Bad request' }, reqHeaders);
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return modeOut(400, { ok: false, error: 'Bad request' }, reqHeaders);
+  if (!checkPassword(body.password)) return modeOut(401, { ok: false, error: 'Wrong password' }, reqHeaders);
+  // Strict on the way in: only the two known modes are storable, so a typo can
+  // never leave a garbage value in the store to be interpreted later.
+  const mode = typeof body.mode === 'string' ? body.mode.trim().toLowerCase() : '';
+  if (mode !== MODE_XPART && mode !== MODE_UNIVERSAL) {
+    return modeOut(400, { ok: false, error: 'Invalid mode — use "xpart" or "universal"' }, reqHeaders);
+  }
+  try {
+    await storeSet(MODE_KEY, mode);
+  } catch (e) {
+    return modeOut(502, { ok: false, error: 'Could not store proxy mode: ' + String((e && e.message) || e).slice(0, 200) }, reqHeaders);
+  }
+  setModeCache(mode); // visible to the next request, no TTL wait
+  return modeOut(200, { ok: true, mode }, reqHeaders);
+}
+
 // The allowlist, and the only place a destination is decided. checkTarget is
 // the single choke point: it gates the client's url and every redirect hop.
+// `mode` only ever decides whether the xpart host allowlist is consulted — the
+// protocol, default-port and private-range guards run in both modes.
 function isAllowedHost(hostname) {
   const h = String(hostname || '').toLowerCase();
   return h === ALLOWED_HOST || h.endsWith(ALLOWED_SUFFIX);
@@ -108,19 +267,24 @@ function isPrivateHost(hostname) {
     return false;
   }
   // IPv6 literals: ::1 loopback, fe80::/10 link-local, fc00::/7 unique-local,
-  // ::ffff:a.b.c.d mapped IPv4 (unwrap and re-check), and the unspecified address.
+  // ::ffff:a.b.c.d mapped IPv4 (unwrap and re-check), and the unspecified
+  // address. URL.hostname keeps the [ ] around an IPv6 literal, so they are
+  // stripped before the patterns are applied — otherwise `https://[::1]/` would
+  // read as an ordinary host and slip past the whole branch.
   if (h.includes(':')) {
-    if (h === '::' || h === '::1') return true;
-    const v4 = h.match(V4_TAIL_RE);
-    if (h.startsWith('::ffff:') && v4) return isPrivateHost(v4[1]);
-    if (V6_LINKLOCAL_RE.test(h)) return true;
-    if (V6_UNIQUE_LOCAL_RE.test(h)) return true;
+    const v6 = h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h;
+    if (v6 === '::' || v6 === '::1') return true;
+    const v4 = v6.match(V4_TAIL_RE);
+    if (v6.startsWith('::ffff:') && v4) return isPrivateHost(v4[1]);
+    if (V6_LINKLOCAL_RE.test(v6)) return true;
+    if (V6_UNIQUE_LOCAL_RE.test(v6)) return true;
     return false;
   }
   return false;
 }
 
-function checkTarget(raw, reqHeaders) {
+function checkTarget(raw, reqHeaders, mode) {
+  const tag = modeTag(mode);
   let u;
   try {
     u = new URL(String(raw));
@@ -128,19 +292,23 @@ function checkTarget(raw, reqHeaders) {
     return { error: err(400, 'Invalid url — pass an absolute url, e.g. https://xpart.netlify.app/path', reqHeaders) };
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') {
-    return { error: err(403, 'Only http: and https: targets are allowed', reqHeaders) };
+    return { error: err(403, 'Only http: and https: targets are allowed' + tag, reqHeaders) };
   }
   // Whole-label allowlist, checked before any socket work. Comparison is on
   // u.hostname, so userinfo (xpart.netlify.app@evil.com) cannot smuggle a host
-  // in, and the default port is already normalised to '' by the parser.
-  if (!isAllowedHost(u.hostname)) {
-    return { error: err(403, 'Only ' + ALLOWED_HOST + ' and its subdomains are proxied', reqHeaders) };
+  // in, and the default port is already normalised to '' by the parser. Skipped
+  // only in universal mode, where the admin has explicitly widened the proxy.
+  if (mode !== MODE_UNIVERSAL && !isAllowedHost(u.hostname)) {
+    return { error: err(403, 'Only ' + ALLOWED_HOST + ' and its subdomains are proxied' + tag, reqHeaders) };
   }
   if (u.port) {
-    return { error: err(403, 'Only default ports are proxied (no explicit port on ' + u.hostname + ')', reqHeaders) };
+    return { error: err(403, 'Only default ports are proxied (no explicit port on ' + u.hostname + ')' + tag, reqHeaders) };
   }
+  // Never mode-dependent: a universal proxy still must not reach the runtime's
+  // own network (loopback, RFC1918, link-local cloud metadata, CGNAT, ::1,
+  // fe80::/fc00::, .local/.internal/.localhost).
   if (isPrivateHost(u.hostname)) {
-    return { error: err(403, 'Private and loopback destinations are not proxied', reqHeaders) };
+    return { error: err(403, 'Private and loopback destinations are not proxied' + tag, reqHeaders) };
   }
   u.hash = '';
   return { target: u };
@@ -318,10 +486,18 @@ exports.handler = async (event) => {
   if (declared && declared > MAX_BODY) return err(413, 'Request body too large (limit 4 MB)', reqHeaders);
   if (event.isBase64Encoded) return err(400, 'Binary (base64) request bodies are not supported — send text/JSON', reqHeaders);
 
+  // Control plane, before any proxy work and before a target is even required:
+  // the mode endpoint is a different verb, and must answer without a url.
+  const intent = controlIntent(event, incoming);
+  if (intent === 'read') return modeOut(200, { ok: true, mode: await currentMode() }, reqHeaders);
+  if (intent === 'write') return setMode(event, reqHeaders);
+
   const raw = targetFrom(event);
   if (!raw) return err(400, 'Missing target — use /api/proxy?url=https://xpart.netlify.app/... or the x-proxy-url header', reqHeaders);
 
-  const checked = checkTarget(raw, reqHeaders);
+  // Served from the module-scope cache, so this is a field read on the hot path.
+  const mode = await currentMode();
+  const checked = checkTarget(raw, reqHeaders, mode);
   if (checked.error) return checked.error;
 
   let body = WITH_BODY.has(incoming) ? (event.body == null ? '' : String(event.body)) : undefined;
@@ -349,7 +525,7 @@ exports.handler = async (event) => {
         let next = { error: true };
         if (location) {
           try {
-            next = checkTarget(new URL(location, url), reqHeaders);
+            next = checkTarget(new URL(location, url), reqHeaders, mode);
           } catch { next = { error: true }; }
         }
         h.settle();
@@ -362,7 +538,7 @@ exports.handler = async (event) => {
           return jsonOut(status, {
             ok: false,
             error: next.error
-              ? 'Upstream redirect target rejected by the proxy allowlist'
+              ? 'Upstream redirect target rejected by the proxy allowlist' + modeTag(mode)
               : 'Too many redirects',
           }, reqHeaders);
         }

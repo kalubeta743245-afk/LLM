@@ -751,6 +751,11 @@ function wireProxyPanel() {
   const out = document.getElementById('px-out');
   const pillsBox = document.getElementById('px-pills');
   const testBtn = document.getElementById('px-test');
+  const modeLabel = document.getElementById('px-mode-label');
+  const modeBox = document.getElementById('px-universal');
+  const modeOut = document.getElementById('px-mode');
+  const noteUni = document.getElementById('px-note-universal');
+  const noteX = document.getElementById('px-note-xpart');
   if (!baseOut || !target || !sub) return;
 
   // 'aichat' and '/aichat' are the same sub base, and '/' collapses to nothing
@@ -816,6 +821,72 @@ function wireProxyPanel() {
       setBusy(testBtn, false);
     }
   });
+
+  /* Server-side proxy mode (xpart | universal). The mode lives on the server, so
+     the switch ships disabled and only ever shows what the server confirmed: the
+     read below decides the initial position, and every write falls back to the
+     last confirmed mode instead of the click. This endpoint sits on this origin
+     (not the Netlify function base), so it is fetched directly. */
+  if (modeBox) {
+    const modeUrl = location.origin + '/api/proxy';
+    let current = 'xpart';
+
+    async function modeCall(next) {
+      const r = next
+        ? await fetch(modeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mode', mode: next, password: localStorage.getItem('mlab_pw') || '' }) })
+        : await fetch(modeUrl + '?action=mode');
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const err = new Error(d.error || (r.status === 401 ? 'Wrong password' : 'HTTP ' + r.status));
+        err.status = r.status;
+        throw err;
+      }
+      return d;
+    }
+    // Renders one authoritative mode. Anything the server does not confirm as
+    // 'universal' falls back to the default 'xpart'.
+    function paint(mode) {
+      const m = mode === 'universal' ? 'universal' : 'xpart';
+      current = m;
+      modeBox.checked = m === 'universal';
+      if (modeOut) { modeOut.textContent = m; modeOut.removeAttribute('aria-busy'); }
+      if (noteUni) noteUni.hidden = m !== 'universal';
+      if (noteX) noteX.hidden = m === 'universal';
+      modeLabel?.classList.remove('is-busy');
+      return m;
+    }
+    function lock(on) {
+      modeBox.disabled = on;
+      modeLabel?.classList.toggle('is-busy', !!on);
+    }
+
+    async function load() {
+      try {
+        const d = await modeCall();
+        paint(d.mode);
+      } catch {
+        paint('xpart');
+      } finally {
+        lock(false);
+      }
+    }
+    load();
+
+    modeBox.addEventListener('change', async () => {
+      const next = modeBox.checked ? 'universal' : 'xpart';
+      const prev = current;
+      lock(true);
+      try {
+        const d = await modeCall(next);
+        toast('Proxy mode: ' + paint(d.mode), 'ok');
+      } catch (ex) {
+        paint(prev);
+        toast((ex && ex.message) || 'Mode change failed', 'err');
+      } finally {
+        lock(false);
+      }
+    });
+  }
 
   sync();
 }

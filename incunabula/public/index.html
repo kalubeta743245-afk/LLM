@@ -415,6 +415,13 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 .px-input{font:400 12px var(--mono)}
 .output .px-url{font:500 10px/1.5 var(--mono);color:var(--ink-4);word-break:break-all;margin-bottom:8px}
 .output .px-bad{color:var(--err)}
+.px-mode{
+  font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);justify-self:end;white-space:nowrap;
+}
+.px-mode-row .toggle{transition:opacity var(--dur) var(--ease)}
+.px-mode-row .toggle.is-busy{opacity:.45;cursor:progress}
+.px-note span[hidden]{display:none}
 
 /* ── Toast ── */
 #toast{
@@ -463,6 +470,7 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
   .console-body{padding:10px 16px 16px}
   #proxy-card .btn-sm{min-height:36px}
   #proxy-card .pill{min-height:36px}
+  #proxy-card .px-mode-row .toggle{min-height:36px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -577,6 +585,19 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
             <button class="pill on" type="button" data-path="/">/</button>
             <button class="pill" type="button" data-path="/aichat">/aichat</button>
           </div>
+          <div class="cred-line px-mode-row">
+            <span class="cred-k">Proxy mode</span>
+            <label class="toggle is-busy" id="px-mode-label">
+              <input class="toggle-input" id="px-universal" type="checkbox" disabled>
+              <span class="tg-track" aria-hidden="true"><span class="tg-knob"></span></span>
+              <span>Universal mode</span>
+            </label>
+            <span class="px-mode" id="px-mode" aria-busy="true">reading…</span>
+          </div>
+          <p class="hint" id="px-note">
+            <span id="px-note-xpart">On: any public host. Off: xpart.netlify.app only.</span>
+            <span id="px-note-universal" hidden>Universal mode is on — this proxy will forward to any public host.</span>
+          </p>
           <p class="hint">This origin attaches the CORS headers for you — append any path after the base.</p>
           <div class="output" id="px-out">No probe yet. Set a target and press Test.</div>
         </div>
@@ -653,6 +674,6 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="app.js?v=70"></script>
+<script src="app.js?v=71"></script>
 </body>
 </html>
