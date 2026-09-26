@@ -23,6 +23,7 @@ const v1Fn = require('./netlify/functions/v1');
 const keysFn = require('./netlify/functions/api-keys');
 const visFn = require('./netlify/functions/model-visibility');
 const proxyFn = require('./netlify/functions/proxy');
+const usageFn = require('./netlify/functions/usage');
 
 const PORT = process.env.MLAB_PORT || 8888;
 const PUBLIC = path.join(__dirname, 'public');
@@ -46,6 +47,7 @@ const FNS = {
   v1: v1Fn.handler,
   'api-keys': keysFn.handler,
   'model-visibility': visFn.handler,
+  usage: usageFn.handler,
   proxy: proxyFn.handler,
 };
 

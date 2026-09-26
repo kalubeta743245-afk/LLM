@@ -8,6 +8,7 @@ const FNS = {
   v1: require('../netlify/functions/v1').handler,
   'api-keys': require('../netlify/functions/api-keys').handler,
   'model-visibility': require('../netlify/functions/model-visibility').handler,
+  usage: require('../netlify/functions/usage').handler,
   proxy: require('../netlify/functions/proxy').handler,
 };
 
@@ -78,7 +79,7 @@ export default {
       if (env.MODELLAB_KV) globalThis.MODELLAB_KV = env.MODELLAB_KV;
       if (env.PROXY_MODE) globalThis.PROXY_MODE = env.PROXY_MODE;
       if (env.SITE_PASSWORD) globalThis.SITE_PASSWORD = env.SITE_PASSWORD;
-      for (const k of ['NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'INCEPTION_API_KEY', 'APINEX_API_KEY']) {
+      for (const k of ['NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'INCEPTION_API_KEY', 'APINEX_API_KEY', 'CF_API_TOKEN']) {
         if (env[k]) globalThis[k] = env[k];
       }
     } catch {}

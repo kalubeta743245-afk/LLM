@@ -746,7 +746,6 @@ function wireGateway() {
 // you copy is exactly what Test asks for.
 function wireProxyPanel() {
   const baseOut = document.getElementById('px-base');
-  const fullOut = document.getElementById('px-full');
   const target = document.getElementById('px-target');
   const sub = document.getElementById('px-path');
   const out = document.getElementById('px-out');
@@ -781,10 +780,6 @@ function wireProxyPanel() {
   function sync() {
     baseOut.value = PREFIX;
     baseOut.title = 'Paste this as the base URL, then append any url after the =';
-    if (fullOut) {
-      fullOut.value = proxyUrl('');
-      fullOut.title = fullOut.value;
-    }
     const cur = subPath() || '/';
     if (pillsBox) pillsBox.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', b.dataset.path === cur));
   }
@@ -798,9 +793,6 @@ function wireProxyPanel() {
     sync();
   });
   document.getElementById('px-base-copy')?.addEventListener('click', (e) => copy(baseOut.value, e.currentTarget));
-  document.getElementById('px-full-copy')?.addEventListener('click', (e) => {
-    if (fullOut && fullOut.value) copy(fullOut.value, e.currentTarget);
-  });
   testBtn?.addEventListener('click', async () => {
     if (!String(target.value || '').trim()) {
       if (out) { out.className = 'output err'; out.textContent = '✗ Set a target host first.'; }
@@ -903,6 +895,206 @@ function wireProxyPanel() {
   sync();
 }
 
+/* ─── Cloudflare usage dashboard ─── */
+// A live read of the `ai` worker's own Workers analytics. Like /api/proxy this
+// endpoint sits on this origin rather than the Netlify function base, so it is
+// fetched directly. One read on wire-up; after that only a pill or the Refresh
+// button refetches — never a timer.
+const USAGE_WINDOWS = { 24:'24h', 168:'7d', 720:'30d' };
+const USAGE_FIX = 'Set the analytics token: wrangler secret put CF_API_TOKEN — the token needs Account Analytics:Read.';
+
+function wireUsageDashboard() {
+  const card = document.getElementById('usage-card');
+  const when = document.getElementById('usage-when');
+  const pillsBox = document.getElementById('usage-pills');
+  const refreshBtn = document.getElementById('usage-refresh');
+  const stats = document.getElementById('usage-stats');
+  const latBox = document.getElementById('usage-latency');
+  const chart = document.getElementById('usage-chart');
+  const legend = document.getElementById('usage-legend');
+  const statusBox = document.getElementById('usage-status');
+  const out = document.getElementById('usage-out');
+  if (!card || !stats || !latBox || !chart || !out) return;
+
+  const vReq = document.getElementById('usage-v-requests');
+  const vErr = document.getElementById('usage-v-errors');
+  const vRate = document.getElementById('usage-v-success');
+  const vSub = document.getElementById('usage-v-subrequests');
+  const tErr = document.getElementById('usage-t-errors');
+  const vCpu50 = document.getElementById('usage-v-cpu50');
+  const vCpu99 = document.getElementById('usage-v-cpu99');
+  const vDur50 = document.getElementById('usage-v-dur50');
+  const vDur99 = document.getElementById('usage-v-dur99');
+  if (!vReq || !vErr || !vRate || !vSub || !vCpu50 || !vCpu99 || !vDur50 || !vDur99) return;
+
+  let hours = 24;
+  let running = null;
+
+  // GraphQL numerics are nullable upstream; anything odd reads as 0 here.
+  const num = x => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const nf = x => num(x).toLocaleString();
+  // cpu* arrive in seconds and are tiny, so they read as ms; duration only
+  // becomes seconds once ms stops being legible.
+  const asMs = x => (num(x) * 1000).toFixed(2) + 'ms';
+  const asDur = x => {
+    const s = num(x);
+    if (s >= 10) return s.toFixed(1) + 's';
+    if (s >= 1) return s.toFixed(2) + 's';
+    return (s * 1000).toFixed(0) + 'ms';
+  };
+  const hourLabel = iso => {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit' });
+  };
+  const win = h => USAGE_WINDOWS[h] || h + 'h';
+
+  function renderChart(rows) {
+    const list = (Array.isArray(rows) ? rows : [])
+      .filter(b => b && (num(b.requests) > 0 || num(b.errors) > 0))
+      .slice()
+      .sort((a, b) => (Date.parse(a.hour) || 0) - (Date.parse(b.hour) || 0));
+    chart.innerHTML = '';
+    if (!list.length) {
+      chart.appendChild(el('p', 'hint', 'No traffic in this window.'));
+      return 0;
+    }
+    const peak = list.reduce((m, b) => Math.max(m, num(b.requests)), 0);
+    const track = el('div', 'usage-track');
+    track.setAttribute('role', 'img');
+    track.setAttribute('aria-label', 'Hourly requests, oldest at left');
+    for (const b of list) {
+      const req = num(b.requests), err = num(b.errors);
+      const bar = el('div', 'usage-bar' + (err > 0 ? ' has-err' : ''));
+      bar.style.height = (peak > 0 ? Math.max(2, Math.round((req / peak) * 100)) : 2) + '%';
+      bar.title = hourLabel(b.hour) + ' · ' + nf(req) + ' req · ' + nf(err) + ' err';
+      track.appendChild(bar);
+    }
+    chart.appendChild(track);
+    return list.length;
+  }
+
+  function renderStatus(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    statusBox.innerHTML = '';
+    if (!list.length) {
+      statusBox.appendChild(el('p', 'hint', 'No status breakdown in this window.'));
+      return;
+    }
+    for (const s of list) {
+      const name = String((s && s.status) || 'unknown');
+      const tone = name === 'success' ? ' ok' : (name === 'scriptThrewException' ? ' err' : '');
+      const row = el('div', 'usage-srow');
+      row.append(
+        el('span', 'usage-sname' + tone, name),
+        el('span', 'usage-scnt', nf(s.requests) + ' req'),
+        el('span', 'usage-scnt', nf(s.errors) + ' err')
+      );
+      row.title = name + ' · ' + nf(s.requests) + ' requests · ' + nf(s.errors) + ' errors';
+      statusBox.appendChild(row);
+    }
+  }
+
+  function paint(d, h) {
+    const t = (d.totals && typeof d.totals === 'object') ? d.totals : {};
+    const requests = num(t.requests), errors = num(t.errors);
+    // Prefer the server's rate; fall back to deriving it if it is missing.
+    const rate = (typeof t.successRate === 'number' && isFinite(t.successRate))
+      ? t.successRate
+      : (requests > 0 ? (requests - errors) / requests : 0);
+    vReq.textContent = nf(requests);
+    vErr.textContent = nf(errors);
+    vRate.textContent = (rate * 100).toFixed(1) + '%';
+    vSub.textContent = nf(t.subrequests);
+    if (tErr) tErr.classList.toggle('has-err', errors > 0);
+
+    const l = (d.latency && typeof d.latency === 'object') ? d.latency : null;
+    vCpu50.textContent = l && l.cpuP50 != null ? asMs(l.cpuP50) : '—';
+    vCpu99.textContent = l && l.cpuP99 != null ? asMs(l.cpuP99) : '—';
+    vDur50.textContent = l && l.durationP50 != null ? asDur(l.durationP50) : '—';
+    vDur99.textContent = l && l.durationP99 != null ? asDur(l.durationP99) : '—';
+
+    const buckets = renderChart(d.timeline);
+    renderStatus(d.byStatus);
+    if (legend) {
+      legend.textContent = buckets
+        ? 'window ' + win(h) + ' · ' + buckets + ' hourly buckets · oldest at left, newest at right · a capped bar saw errors'
+        : 'window ' + win(h) + ' · no hourly buckets returned';
+    }
+
+    const errRate = requests > 0 ? (errors / requests * 100) : 0;
+    const summary = (d.script || 'ai') + ' · ' + nf(requests) + ' requests · ' + errRate.toFixed(1) + '% errors · window ' + win(h);
+    out.className = 'output';
+    out.innerHTML = '<div class="body-in"><div>' + esc(summary) + '</div>'
+      + (d.configured === false ? '<div class="usage-fix">' + esc(USAGE_FIX) + '</div>' : '') + '</div>';
+    const s = hourLabel(d.generatedAt);
+    if (when) when.textContent = s ? 'read ' + s : '—';
+  }
+
+  function paintError(ex) {
+    const status = (ex && ex.status) || 0;
+    const payload = (ex && ex.payload) || {};
+    const msg = String((ex && ex.message) || 'Request failed');
+    out.className = 'output err';
+    if (status === 401) {
+      out.textContent = '✗ ' + msg;
+      toast(msg, 'err');
+      return;
+    }
+    // A missing token is a setup problem, not a transient one — say how to fix it.
+    if (status === 503 || payload.configured === false) {
+      out.innerHTML = '<div>' + esc('✗ ' + msg) + '</div><div class="usage-fix">' + esc(USAGE_FIX) + '</div>';
+      return;
+    }
+    out.textContent = '✗ ' + msg;
+  }
+
+  async function read(h) {
+    const want = num(h) || 24;
+    // A newer read supersedes an in-flight one rather than racing it.
+    if (running) { try { running.abort(); } catch {} }
+    const ctrl = new AbortController();
+    running = ctrl;
+    hours = want;
+    if (pillsBox) {
+      pillsBox.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', (parseInt(b.dataset.hours, 10) || 0) === want));
+    }
+    if (refreshBtn) setBusy(refreshBtn, true);
+    out.className = 'output loading';
+    out.textContent = 'Reading Cloudflare analytics…';
+    try {
+      const r = await fetch(location.origin + '/api/usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: localStorage.getItem('mlab_pw') || '', hours: want }),
+        signal: ctrl.signal
+      });
+      const d = await r.json().catch(() => ({}));
+      if (ctrl.signal.aborted) return;
+      if (!r.ok) {
+        const e = new Error(d.error || ('HTTP ' + r.status));
+        e.status = r.status;
+        e.payload = d;
+        throw e;
+      }
+      paint(d, want);
+    } catch (ex) {
+      if (ex && ex.name === 'AbortError') return;
+      paintError(ex);
+    } finally {
+      if (running === ctrl) { running = null; if (refreshBtn) setBusy(refreshBtn, false); }
+    }
+  }
+
+  pillsBox?.addEventListener('click', (e) => {
+    const pill = e.target.closest('.pill');
+    if (!pill || !pillsBox.contains(pill)) return;
+    read(parseInt(pill.dataset.hours, 10) || 24);
+  });
+  refreshBtn?.addEventListener('click', () => read(hours));
+
+  read(24);
+}
+
 function wireAllProviders() {
   const dlg = document.getElementById('all-dialog'); if (!dlg) return;
   const list = document.getElementById('all-list');
@@ -969,6 +1161,7 @@ function buildUI() {
   wireGateway();
   wireAllProviders();
   wireProxyPanel();
+  wireUsageDashboard();
   wireDialog();
 }
 
