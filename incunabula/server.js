@@ -120,6 +120,13 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await fn({ httpMethod: req.method, body, headers: req.headers, path: url.pathname + url.search });
+      if (result && result.stream && typeof result.stream.getReader === 'function') {
+        // Chunked passthrough: let the target's bytes reach the client as they
+        // arrive instead of buffering the whole body first.
+        res.writeHead(result.statusCode || 200, result.headers || cors());
+        const { Readable } = require('stream');
+        return Readable.fromWeb(result.stream).pipe(res);
+      }
       res.writeHead(result.statusCode, { ...(result.headers || cors()), 'Content-Type': (result.headers && result.headers['Content-Type']) || 'application/json' });
       return res.end(result.body);
     } catch (e) {

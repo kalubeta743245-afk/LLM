@@ -411,6 +411,11 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 .ap-list{max-height:50vh;overflow-y:auto}
 .ap-empty{font-size:13px;color:var(--ink-3);padding:12px 0}
 
+/* ── Universal proxy console ── */
+.px-input{font:400 12px var(--mono)}
+.output .px-url{font:500 10px/1.5 var(--mono);color:var(--ink-4);word-break:break-all;margin-bottom:8px}
+.output .px-bad{color:var(--err)}
+
 /* ── Toast ── */
 #toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);
@@ -456,6 +461,8 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
   .st-section{padding-top:16px;padding-bottom:16px}
   .console-head{padding:14px 16px 0}
   .console-body{padding:10px 16px 16px}
+  #proxy-card .btn-sm{min-height:36px}
+  #proxy-card .pill{min-height:36px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -540,6 +547,41 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
         </div>
       </section>
 
+      <section class="console" id="proxy-card" aria-label="Universal proxy">
+        <div class="console-head">
+          <span class="console-title">Universal proxy</span>
+          <span class="console-meta">any path · cors bypassed</span>
+        </div>
+        <div class="console-body">
+          <div class="cred-line">
+            <span class="cred-k">Base URL</span>
+            <input class="cred-v" id="px-base" readonly aria-label="Prefixed proxy base URL">
+            <button class="btn btn-sm" id="px-base-copy" title="Copy prefixed base URL">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
+          <div class="cred-line">
+            <span class="cred-k">Target</span>
+            <input class="input px-input" id="px-target" value="https://xpart.netlify.app" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Proxy target host">
+          </div>
+          <div class="cred-line">
+            <span class="cred-k">Path</span>
+            <input class="input px-input" id="px-path" value="/" autocomplete="off" spellcheck="false" aria-label="Path appended to the target">
+            <button class="btn btn-solid btn-sm" id="px-test" title="Send one GET through the proxy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span>Test</span>
+            </button>
+          </div>
+          <div class="pills" id="px-pills">
+            <button class="pill on" type="button" data-path="/">/</button>
+            <button class="pill" type="button" data-path="/aichat">/aichat</button>
+          </div>
+          <p class="hint">This origin attaches the CORS headers for you — append any path after the base.</p>
+          <div class="output" id="px-out">No probe yet. Set a target and press Test.</div>
+        </div>
+      </section>
+
       <div class="stations" id="cards"></div>
     </main>
   </div>
@@ -611,6 +653,6 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="app.js?v=69"></script>
+<script src="app.js?v=70"></script>
 </body>
 </html>

@@ -39,6 +39,7 @@ const ICON = {
   eyeOff: SVG('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'),
   copyCheck: SVG('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/><polyline points="9 14 11 16 15 12"/>'),
   reset: SVG('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/><line x1="8" y1="15" x2="16" y2="15"/>'),
+  link: SVG('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'),
 };
 
 const API_BASE = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.hostname.endsWith('.trycloudflare.com'))
@@ -739,6 +740,86 @@ function wireGateway() {
   });
 }
 
+/* ─── Universal proxy console ─── */
+// Hands out a ready-made prefixed base for any path on the proxied host. One
+// composition rule feeds both the copyable base and the probe request, so what
+// you copy is exactly what Test asks for.
+function wireProxyPanel() {
+  const baseOut = document.getElementById('px-base');
+  const target = document.getElementById('px-target');
+  const sub = document.getElementById('px-path');
+  const out = document.getElementById('px-out');
+  const pillsBox = document.getElementById('px-pills');
+  const testBtn = document.getElementById('px-test');
+  if (!baseOut || !target || !sub) return;
+
+  // 'aichat' and '/aichat' are the same sub base, and '/' collapses to nothing
+  // so 'https://xpart.netlify.app' never turns into a double slash.
+  function subPath() {
+    let p = String(sub.value || '').trim();
+    if (p && p.charAt(0) !== '/') p = '/' + p;
+    return p.replace(/\/+$/, '');
+  }
+  // A target carrying its own ?query has to be encoded or it would spill out of
+  // the proxy's own query string.
+  const needsEncode = () => /[?#&]/.test(String(target.value || ''));
+  function proxyUrl(extra) {
+    let joined = String(target.value || '').trim().replace(/\/+$/, '') + subPath() + String(extra || '');
+    if (needsEncode()) joined = encodeURIComponent(joined);
+    return location.origin + '/api/proxy?url=' + joined;
+  }
+  function sync() {
+    baseOut.value = proxyUrl('');
+    baseOut.title = baseOut.value;
+    const cur = subPath() || '/';
+    if (pillsBox) pillsBox.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', b.dataset.path === cur));
+  }
+
+  target.addEventListener('input', sync);
+  sub.addEventListener('input', sync);
+  pillsBox?.addEventListener('click', (e) => {
+    const pill = e.target.closest('.pill');
+    if (!pill || !pillsBox.contains(pill)) return;
+    sub.value = pill.dataset.path || '/';
+    sync();
+  });
+  document.getElementById('px-base-copy')?.addEventListener('click', (e) => copy(baseOut.value, e.currentTarget));
+  testBtn?.addEventListener('click', async () => {
+    if (!String(target.value || '').trim()) {
+      if (out) { out.className = 'output err'; out.textContent = '✗ Set a target host first.'; }
+      toast('Set a target host first', 'err');
+      return;
+    }
+    // The probe path is the trailing slash: it asks for the very resource the
+    // base names, so a good copy and a good probe stay the same request.
+    const url = proxyUrl('/');
+    setBusy(testBtn, true);
+    if (out) { out.className = 'output loading'; out.textContent = 'Probing ' + url + '…'; }
+    const started = Date.now();
+    try {
+      const r = await fetch(url, { method: 'GET' });
+      const ms = Date.now() - started;
+      const raw = await r.text().catch(() => '');
+      const type = (r.headers.get('content-type') || 'unknown').split(';')[0].trim();
+      if (out) {
+        out.className = 'output';
+        out.innerHTML = '<div class="body-in"><div class="meta">'
+          + '<span' + (r.ok ? '' : ' class="px-bad"') + '>HTTP ' + r.status + (r.statusText ? ' ' + esc(r.statusText) : '') + '</span>'
+          + '<span>' + ms + 'ms</span><span>' + esc(type) + '</span></div>'
+          + '<div class="px-url">' + esc(url) + '</div>'
+          + '<div>' + esc(raw ? raw.slice(0, 400) : '(empty body)') + (raw.length > 400 ? '…' : '') + '</div></div>';
+      }
+    } catch (ex) {
+      if (out) { out.className = 'output err'; out.textContent = '✗ ' + ((ex && ex.message) || 'Request failed'); }
+      toast((ex && ex.message) || 'Probe failed', 'err');
+    } finally {
+      setBusy(testBtn, false);
+    }
+  });
+
+  sync();
+}
+
 function wireAllProviders() {
   const dlg = document.getElementById('all-dialog'); if (!dlg) return;
   const list = document.getElementById('all-list');
@@ -804,6 +885,7 @@ function buildUI() {
   }).catch(() => {});
   wireGateway();
   wireAllProviders();
+  wireProxyPanel();
   wireDialog();
 }
 

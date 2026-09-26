@@ -1,24 +1,38 @@
-// Same-origin CORS-bypass proxy. Prefix any target url with this app's own
-// origin and the browser gets it back with CORS headers attached, so a browser
-// never has to pass the target's own CORS check.
+// Same-origin CORS-bypass proxy. Browser clients prefix an approved target url
+// with this app's own origin and get it back with CORS headers attached, so the
+// browser never has to pass the target's own CORS check.
 //
-//   GET|POST|PUT|PATCH|DELETE /api/proxy?url=<any-absolute-url>
-//   GET|POST|PUT|PATCH|DELETE /.netlify/functions/proxy?url=<any-absolute-url>
+//   GET|POST|PUT|PATCH|DELETE /api/proxy?url=<absolute-url>
+//   GET|POST|PUT|PATCH|DELETE /.netlify/functions/proxy?url=<absolute-url>
 //   ...or the same routes with the target in an `x-proxy-url` header (browsers
 //   may set it after the 204 preflight; the Cloudflare Worker route keeps the
 //   query string out of the event, so this is the form that always works).
 //
-// Open to any public destination. Two guards stay on, both invisible to normal
-// use: http(s) only, and no private/loopback/link-local destinations — a
-// public url prefix never hits either, but without them this worker would be a
-// working SSRF into cloud metadata (169.254.169.254) and internal services.
+// DESTINATION ALLOWLIST — closed, not open. Only `xpart.netlify.app` and its
+// subdomains (any depth, any path) are ever forwarded to. The match is on whole
+// DNS labels off `URL.hostname` (userinfo already stripped by the parser), so
+// `xpart.netlify.app.evil.com`, `evilxpart.netlify.app`,
+// `xpart.netlify.app%2eevil.com`, `xpart.netlify.app@evil.com` and the
+// trailing-dot FQDN `xpart.netlify.app.` are all rejected with 403 before a
+// socket is opened. `http:`/`https:` only, and default ports only (80/443 — the
+// parser already normalises those away, so any surviving `u.port` is refused).
+//
+// Two SSRF guards stay layered on top of the allowlist, invisible to normal
+// use and free: no private/loopback/link-local destinations (.local/.internal/
+// .localhost, RFC1918, CGNAT, 169.254.169.254 cloud metadata). Every redirect
+// hop is re-validated through the same checkTarget.
 const { cors } = require('./_shared');
 
 const MAX_BODY = 4 * 1024 * 1024; // 4 MB of request body forwarded, hard stop
-const TIMEOUT_MS = 60000;          // per hop, fetch + body read
+const TIMEOUT_MS = 60000;          // per hop: fetch + the streamed body
 const MAX_HOPS = 3;                // redirect hops followed
 const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
 const WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+const ALLOWED_HOST = 'xpart.netlify.app';
+const ALLOWED_SUFFIX = '.' + ALLOWED_HOST; // label-anchored, never a bare prefix
+const SHARED_CACHE = 'public, max-age=60';  // default for cacheable GET/HEAD
+const NO_CACHE = 'no-cache, no-transform';  // event streams must never be cached
 
 // Hop-by-hop, host-bound, cookie and edge headers that must never be replayed
 // onto the target. accept-encoding/content-encoding are dropped as well so the
@@ -31,32 +45,58 @@ const STRIP = new Set([
 ]);
 const stripHeader = (k) => STRIP.has(k) || k.startsWith('cf-') || k.startsWith('access-control-request-');
 
-function err(status, message, reqHeaders) {
+// Hoisted: constant patterns, never rebuilt per request.
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+const V4_TAIL_RE = /(\d{1,3}(?:\.\d{1,3}){3})$/;
+const V6_LINKLOCAL_RE = /^fe[89ab]/;
+const V6_UNIQUE_LOCAL_RE = /^f[cd]/;
+const EVENT_STREAM_RE = /^text\/event-stream\b/i;
+
+// Can this runtime hand a ReadableStream to the client? The Cloudflare Worker
+// pipes result.stream into a Response (worker/index.js runFn) and any other
+// fetch runtime can too. Netlify Functions v1 serialises its return value as
+// JSON, so a stream would be dropped there — that runtime buffers instead.
+const CAN_STREAM = (() => {
+  if (typeof ReadableStream === 'undefined' || typeof TextDecoder === 'undefined') return false;
+  try {
+    const env = (typeof process !== 'undefined' && process && process.env) || {};
+    return !(env.NETLIFY || env.LAMBDA_TASK_ROOT || env.AWS_LAMBDA_FUNCTION_NAME);
+  } catch {
+    return true;
+  }
+})();
+
+function jsonOut(status, payload, reqHeaders) {
   return {
     statusCode: status,
     headers: { ...cors(reqHeaders), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ok: false, error: message }),
+    body: typeof payload === 'string' ? payload : JSON.stringify(payload),
   };
 }
 
-function pass(status, text, contentType, reqHeaders) {
-  return {
-    statusCode: status,
-    headers: { ...cors(reqHeaders), 'Content-Type': contentType || 'application/json' },
-    body: text == null ? '' : text,
-  };
+function err(status, message, reqHeaders) {
+  // Error envelopes never carry caching headers, so a shared cache cannot pin
+  // a 403/502/504 (or a rate-limit page) for the next visitor.
+  return jsonOut(status, { ok: false, error: message }, reqHeaders);
 }
 
-// Destinations that are not publicly routable. Blocking these is what keeps
-// this from being an SSRF pivot into the runtime's own network: loopback,
-// RFC1918, link-local (which is where cloud metadata lives), carrier NAT,
+// The allowlist, and the only place a destination is decided. checkTarget is
+// the single choke point: it gates the client's url and every redirect hop.
+function isAllowedHost(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  return h === ALLOWED_HOST || h.endsWith(ALLOWED_SUFFIX);
+}
+
+// Second layer under the allowlist: destinations that are not publicly routable.
+// Belt and braces against an SSRF pivot into the runtime's own network —
+// loopback, RFC1918, link-local (where cloud metadata lives), carrier NAT,
 // unique-local IPv6, and the .local/.internal/.localhost suffixes.
 function isPrivateHost(hostname) {
   const h = String(hostname || '').toLowerCase().replace(/\.$/, '');
   if (!h) return true;
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.home.arpa')) return true;
   // Any target given as a bare IP literal.
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+  if (IPV4_RE.test(h)) {
     const p = h.split('.').map(Number);
     if (p.some((n) => n > 255)) return true;
     if (p[0] === 0 || p[0] === 10 || p[0] === 127) return true;
@@ -71,25 +111,33 @@ function isPrivateHost(hostname) {
   // ::ffff:a.b.c.d mapped IPv4 (unwrap and re-check), and the unspecified address.
   if (h.includes(':')) {
     if (h === '::' || h === '::1') return true;
-    const v4 = h.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+    const v4 = h.match(V4_TAIL_RE);
     if (h.startsWith('::ffff:') && v4) return isPrivateHost(v4[1]);
-    if (/^fe[89ab]/.test(h)) return true;
-    if (/^f[cd]/.test(h)) return true;
+    if (V6_LINKLOCAL_RE.test(h)) return true;
+    if (V6_UNIQUE_LOCAL_RE.test(h)) return true;
     return false;
   }
   return false;
 }
 
-// Single choke point for every URL we are about to fetch, including redirects.
 function checkTarget(raw, reqHeaders) {
   let u;
   try {
     u = new URL(String(raw));
   } catch {
-    return { error: err(400, 'Invalid url — pass an absolute url, e.g. https://example.com/path', reqHeaders) };
+    return { error: err(400, 'Invalid url — pass an absolute url, e.g. https://xpart.netlify.app/path', reqHeaders) };
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') {
     return { error: err(403, 'Only http: and https: targets are allowed', reqHeaders) };
+  }
+  // Whole-label allowlist, checked before any socket work. Comparison is on
+  // u.hostname, so userinfo (xpart.netlify.app@evil.com) cannot smuggle a host
+  // in, and the default port is already normalised to '' by the parser.
+  if (!isAllowedHost(u.hostname)) {
+    return { error: err(403, 'Only ' + ALLOWED_HOST + ' and its subdomains are proxied', reqHeaders) };
+  }
+  if (u.port) {
+    return { error: err(403, 'Only default ports are proxied (no explicit port on ' + u.hostname + ')', reqHeaders) };
   }
   if (isPrivateHost(u.hostname)) {
     return { error: err(403, 'Private and loopback destinations are not proxied', reqHeaders) };
@@ -133,36 +181,129 @@ function byteLength(s) {
   return new TextEncoder().encode(s).length;
 }
 
-// fetch + full body read inside one abort window, so a target that accepts the
-// socket and then stalls cannot pin the worker for longer than TIMEOUT_MS.
-// `state` is owned by the caller so a timeout is still recognisable when the
-// abort surfaces as a throw instead of a response.
+// Some runtimes throw on a malformed stored header; never let that 502 a
+// perfectly good response.
+function hdr(res, name) {
+  try {
+    return res.headers && typeof res.headers.get === 'function' ? (res.headers.get(name) || '') : '';
+  } catch {
+    return '';
+  }
+}
+
+// Upstream Cache-Control wins; otherwise only a successful GET/HEAD gets a
+// short shared-cache default, event streams are pinned to no-cache, and errors
+// get nothing at all.
+function cacheHeaderFor(method, status, contentType, upstream) {
+  if (upstream) return upstream;
+  if (EVENT_STREAM_RE.test(contentType || '')) return NO_CACHE;
+  if ((method === 'GET' || method === 'HEAD') && status >= 200 && status < 300) return SHARED_CACHE;
+  return null;
+}
+
+// Response headers for a successful proxy. Content-Type and Cache-Control are
+// the only upstream headers copied across: content-encoding is deliberately NOT
+// forwarded (the runtime hands us a decoded body, so labelling it would make
+// clients try to decompress already-plain bytes) and content-length is dropped
+// with it, since the byte count of a chunked relay is not known up front. CORS
+// comes from cors(), which also sets Access-Control-Expose-Headers so browser
+// JS can read the upstream headers back.
+function responseHeaders(reqHeaders, contentType, cache) {
+  const h = { ...cors(reqHeaders) };
+  if (contentType) h['Content-Type'] = contentType;
+  if (cache) h['Cache-Control'] = cache;
+  return h;
+}
+
+// fetch + hand back the live body inside one abort window, so a target that
+// accepts the socket and then stalls cannot pin the worker for longer than
+// TIMEOUT_MS. `state` is owned by the caller so a timeout is still recognisable
+// when the abort surfaces as a throw instead of a response. The returned
+// `settle()` releases the timer and is handed to the body stream, so the abort
+// window spans the whole stream and not just the response head.
 async function hop(url, method, headers, body, state) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => { state.timedOut = true; ctrl.abort(); }, TIMEOUT_MS);
+  let res;
   try {
-    const res = await fetch(url.toString(), {
+    res = await fetch(url.toString(), {
       method,
       headers,
       body: body === undefined ? undefined : body,
       redirect: 'manual',
       signal: ctrl.signal,
     });
-    const buf = await res.arrayBuffer();
-    let text = '';
-    if (buf && buf.byteLength) {
-      try {
-        text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
-      } catch {
-        text = null; // not text — refuse rather than hand back mangled bytes
-      }
-    }
-    let location = '';
-    try { location = res.headers.get('location') || ''; } catch { location = ''; }
-    return { status: res.status, location, text, type: (res.headers.get('content-type') || '').split(';')[0].trim() };
-  } finally {
+  } catch (e) {
     clearTimeout(timer);
+    throw e;
   }
+  return { res, settle: () => clearTimeout(timer) };
+}
+
+// Zero-copy relay: the client's first byte is the upstream's first byte.
+// `done` fires on close, error or cancel — that is what clears the hop timer.
+// If the timer wins instead, ctrl.abort() errors the reader below and the
+// client sees a terminated stream rather than a request that hangs.
+function relayStream(source, done) {
+  const reader = source.getReader();
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    try { done(); } catch { /* timer already gone */ }
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      let chunk;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        finish();
+        try { controller.error(e); } catch { /* consumer already gone */ }
+        return;
+      }
+      if (chunk.done) {
+        finish();
+        try { controller.close(); } catch { /* consumer already gone */ }
+        return;
+      }
+      try {
+        controller.enqueue(chunk.value);
+      } catch (e) {
+        finish();
+        try { reader.cancel(e); } catch { /* source already gone */ }
+      }
+    },
+    cancel(reason) {
+      finish();
+      try { return Promise.resolve(reader.cancel(reason)).catch(() => {}); } catch { return undefined; }
+    },
+  });
+}
+
+// Netlify Functions v1 fallback only: no streaming, so read the body out once.
+async function collect(stream) {
+  const chunks = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const r = await reader.read();
+    if (r.done) break;
+    if (r.value && r.value.byteLength) chunks.push(r.value);
+  }
+  let len = 0;
+  for (const c of chunks) len += c.byteLength;
+  const buf = new Uint8Array(len);
+  let at = 0;
+  for (const c of chunks) { buf.set(c, at); at += c.byteLength; }
+  return buf;
+}
+
+// Release a redirect body we are not going to read.
+function discard(res) {
+  try {
+    const b = res.body;
+    if (b && typeof b.cancel === 'function') Promise.resolve(b.cancel()).catch(() => {});
+  } catch { /* nothing to release */ }
 }
 
 exports.handler = async (event) => {
@@ -186,39 +327,82 @@ exports.handler = async (event) => {
   let body = WITH_BODY.has(incoming) ? (event.body == null ? '' : String(event.body)) : undefined;
   if (byteLength(body) > MAX_BODY) return err(413, 'Request body too large (limit 4 MB)', reqHeaders);
 
+  // Built once and reused across every hop: a same-host redirect can never
+  // introduce a header we would have to re-filter, and a 301/302/303 to GET
+  // only deletes two keys from this same object.
   const headers = forwardHeaders(reqHeaders);
-  let url = checked.target;
+  let url = checked.target; // the validated URL object, reused hop to hop
   const state = { timedOut: false };
 
   try {
     for (let hopCount = 0; hopCount <= MAX_HOPS; hopCount++) {
-      const res = await hop(url, method, headers, body, state);
-      const type = res.type || 'application/json';
-      const isRedirect = res.status >= 300 && res.status < 400 && res.status !== 304;
-      if (!isRedirect) {
-        if (res.text === null) return err(502, 'Upstream body is not UTF-8 text and cannot be proxied', reqHeaders);
-        return pass(res.status, res.text, type, reqHeaders);
+      const h = await hop(url, method, headers, body, state);
+      const res = h.res;
+      const status = res.status;
+      const contentType = hdr(res, 'content-type');
+      const isRedirect = status >= 300 && status < 400 && status !== 304;
+
+      if (isRedirect) {
+        // Re-validate the Location through the same allowlist + SSRF guards
+        // before following it.
+        const location = hdr(res, 'location');
+        let next = { error: true };
+        if (location) {
+          try {
+            next = checkTarget(new URL(location, url), reqHeaders);
+          } catch { next = { error: true }; }
+        }
+        h.settle();
+        discard(res);
+        // Rejected hop (off-allowlist/unparseable Location) or hop budget spent:
+        // hand back the 3xx status with CORS headers but no Location, so no
+        // client is walked onto a blocked destination and no Authorization
+        // header we forwarded rides along with it.
+        if (next.error || hopCount === MAX_HOPS) {
+          return jsonOut(status, {
+            ok: false,
+            error: next.error
+              ? 'Upstream redirect target rejected by the proxy allowlist'
+              : 'Too many redirects',
+          }, reqHeaders);
+        }
+        if (status === 303 || ((status === 301 || status === 302) && method === 'POST')) {
+          method = 'GET';
+          body = undefined;
+          delete headers['content-type'];
+          delete headers['content-length'];
+        }
+        url = next.target;
+        continue;
       }
-      // Rejected hop (private/unparseable Location): hand back the 3xx status
-      // with CORS headers but no Location, so no client is walked onto a
-      // blocked destination and no Authorization header we forwarded rides
-      // along with it.
-      let next = { error: true };
-      if (res.location) {
-        try {
-          next = checkTarget(new URL(res.location, url.toString()), reqHeaders);
-        } catch { next = { error: true }; }
+
+      // Final hop: relay it. Nothing upstream is inspected or rewritten, so the
+      // happy path does zero buffering.
+      const out = responseHeaders(reqHeaders, contentType, cacheHeaderFor(method, status, contentType, hdr(res, 'cache-control')));
+      const source = res.body;
+      if (!source || typeof source.getReader !== 'function') {
+        // 204/HEAD and friends: no body to relay.
+        h.settle();
+        return { statusCode: status, headers: out, body: '' };
       }
-      if (next.error || hopCount === MAX_HOPS) {
-        return pass(res.status, res.text || '', 'application/json', reqHeaders);
+      if (CAN_STREAM) {
+        return { statusCode: status, headers: out, stream: relayStream(source, h.settle) };
       }
-      if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
-        method = 'GET';
-        body = undefined;
-        delete headers['content-type'];
-        delete headers['content-length'];
+      let text = '';
+      try {
+        const buf = await collect(source);
+        if (buf.byteLength) {
+          try {
+            text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+          } catch {
+            // not text — refuse rather than hand back mangled bytes
+            return err(502, 'Upstream body is not UTF-8 text and cannot be proxied', reqHeaders);
+          }
+        }
+      } finally {
+        h.settle();
       }
-      url = next.target;
+      return { statusCode: status, headers: out, body: text };
     }
   } catch (e) {
     if (state.timedOut) return err(504, 'Upstream timed out after ' + (TIMEOUT_MS / 1000) + 's', reqHeaders);
