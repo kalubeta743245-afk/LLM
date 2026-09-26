@@ -22,6 +22,7 @@ const customFn = require('./netlify/functions/custom-providers');
 const v1Fn = require('./netlify/functions/v1');
 const keysFn = require('./netlify/functions/api-keys');
 const visFn = require('./netlify/functions/model-visibility');
+const proxyFn = require('./netlify/functions/proxy');
 
 const PORT = process.env.MLAB_PORT || 8888;
 const PUBLIC = path.join(__dirname, 'public');
@@ -45,6 +46,7 @@ const FNS = {
   v1: v1Fn.handler,
   'api-keys': keysFn.handler,
   'model-visibility': visFn.handler,
+  proxy: proxyFn.handler,
 };
 
 function readBody(req) {
@@ -109,7 +111,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const apiMatch = url.pathname.match(/^\/api\/(.+)$/) || url.pathname.match(/^\/\.netlify\/functions\/(.+)$/);
-  if (apiMatch && ['POST', 'GET', 'PUT', 'DELETE'].includes(req.method)) {
+  if (apiMatch && ['POST', 'GET', 'PUT', 'DELETE', 'PATCH', 'HEAD'].includes(req.method)) {
     const fn = FNS[apiMatch[1]];
     if (!fn) {
       res.writeHead(404, cors());
@@ -117,8 +119,8 @@ const server = http.createServer(async (req, res) => {
     }
     const body = await readBody(req);
     try {
-      const result = await fn({ httpMethod: req.method, body, headers: req.headers });
-      res.writeHead(result.statusCode, { ...(result.headers || cors()), 'Content-Type': 'application/json' });
+      const result = await fn({ httpMethod: req.method, body, headers: req.headers, path: url.pathname + url.search });
+      res.writeHead(result.statusCode, { ...(result.headers || cors()), 'Content-Type': (result.headers && result.headers['Content-Type']) || 'application/json' });
       return res.end(result.body);
     } catch (e) {
       const status = e.status || 500;

@@ -31,3 +31,52 @@ The provider connects to your local OpenCode Local Tunnel bridge. A Cloudflare t
 4. Pick a free model and chat
 
 All prompts run through YOUR local OpenCode CLI - nothing leaves your PC.
+
+## CORS-bypass proxy (`/api/proxy`)
+
+Browser-only workaround for calling `xpart.netlify.app` (and its sub-URLs) from a
+page whose origin the target does not send CORS headers for. Point the client at
+this app's own origin instead; the proxy forwards the call and hands the response
+back with CORS headers attached, so the browser accepts it.
+
+Same handler on every runtime (Cloudflare Worker, Netlify, `node server.js`):
+
+- `/api/proxy?url=<absolute-url>`
+- `/.netlify/functions/proxy?url=<absolute-url>`
+- same routes with the target in an `x-proxy-url` header — needed on the
+  Cloudflare Worker, whose `/api/(.+)` route keeps the query string out of the
+  function event. Browsers can set that header after the `204` preflight.
+
+```bash
+curl "https://<this-app>/api/proxy?url=https://xpart.netlify.app/v1/models"
+
+# POST with a body, the form the Worker needs
+curl -X POST https://<this-app>/api/proxy \
+  -H 'x-proxy-url: https://xpart.netlify.app/api/thing' \
+  -H 'authorization: Bearer <key>' \
+  -H 'content-type: application/json' \
+  -d '{"hello":"world"}'
+```
+
+In the browser:
+
+```js
+await fetch('/api/proxy', {
+  method: 'POST',
+  headers: { 'x-proxy-url': 'https://xpart.netlify.app/api/thing', 'content-type': 'application/json' },
+  body: JSON.stringify({ hello: 'world' }),
+}).then((r) => r.json());
+```
+
+**Allowlist, not a relay.** The only reachable targets are `xpart.netlify.app`
+and `*.xpart.netlify.app` (any subdomain, any depth), `http:`/`https:` only, on
+the default port only. Everything else is `403` *before* any request is made, and
+redirects are re-checked against the same rule. A path-style
+(`/api/proxy/https/host/rest`) form is deliberately not supported — pass the
+absolute URL in `?url=` or the header instead.
+
+Other limits: 4 MB max request body (`413`), 60 s per-request timeout (`504`),
+max 3 redirect hops, `OPTIONS` returns `204`. Client headers are forwarded
+except `host`, `origin`, `referer`, `cookie`, hop-by-hop headers and `cf-*`;
+responses are UTF-8 text (a non-text body is refused with `502` rather than
+returned corrupted).

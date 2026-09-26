@@ -3,6 +3,8 @@
 //   POST /v1/chat/completions       — {model:"<publicName>", messages:[...]}
 // Public names are provider-free: the model id by default, or the custom
 // display name when the owner set one. Provider routing stays internal.
+// Responses are scrubbed on the way out, so a client only ever sees the
+// public name and "incunabula" as the owner — never the real provider.
 // Auth: none — open gateway, no key needed.
 // Non-streaming only. Reuses the existing chat/models handlers (ponytail).
 const { cors, storeGet, storeSet, getAllProviders, providerFetch, getOpenCodeModels } = require('./_shared');
@@ -87,6 +89,68 @@ function publicName(providerId, model, aliases) {
   return String(model);
 }
 
+// The only model identity a client may see is the public name, and the only
+// provider identity is "incunabula". Upstream bodies are OpenAI-shaped but
+// still carry the real model id plus a "provider" field, so scrub on the way
+// out. Sanitizing is best-effort by construction: any failure returns the
+// original body/bytes, because a working response outranks a clean one.
+const OWNER = 'incunabula';
+function sanitizeChatBody(text, publicModel) {
+  try {
+    let obj;
+    try { obj = JSON.parse(text); } catch { return text; } // raw/non-JSON upstream
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return text;
+    if (obj.error) return text; // errors pass through untouched (retry logic reads them)
+    obj.model = publicModel;
+    delete obj.provider; // OpenAI shape carries no provider field
+    if ('owned_by' in obj) obj.owned_by = OWNER;
+    return JSON.stringify(obj);
+  } catch { return text; }
+}
+
+// One text chunk of an SSE frame: swap the upstream model id for the public
+// name and drop "provider" fields (plus the comma it leaves behind, so the
+// frame stays parseable JSON). Chunk boundaries can split a token, so a leak
+// can survive — accepted, and any throw returns the chunk unchanged.
+function rewriteChunk(text, needle, publicModel) {
+  try {
+    let out = String(text);
+    if (needle && publicModel && needle !== publicModel) out = out.split(needle).join(publicModel);
+    out = out.replace(/,?\s*"provider"\s*:\s*"[^"]*"/g, '');
+    out = out.replace(/,\s*(?=[}\]])/g, '').replace(/{\s*,/g, '{').replace(/,\s*}/g, '}');
+    return out;
+  } catch { return text; }
+}
+
+// Best-effort streaming scrub: chunks are forwarded as they arrive, rewritten
+// only by rewriteChunk. Never buffered as a whole, never fatal — streaming
+// keeps working even when the rewrite cannot.
+function scrubStream(source, upstreamModel, publicModel) {
+  try {
+    if (!source || typeof source.getReader !== 'function') return source;
+    if (typeof ReadableStream !== 'function') return source;
+    const reader = source.getReader();
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    return new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) { controller.close(); return; }
+          let text;
+          try { text = decoder.decode(value, { stream: true }); } catch { controller.enqueue(value); return; }
+          let out;
+          try { out = rewriteChunk(text, upstreamModel, publicModel); } catch { out = text; }
+          controller.enqueue(encoder.encode(out));
+        } catch (e) {
+          try { controller.error(e); } catch { /* stream already settled */ }
+        }
+      },
+      cancel(reason) { try { return reader.cancel(reason); } catch { /* ignore */ } },
+    });
+  } catch { return source; }
+}
+
 // Turn internal {providerId, model} entries into the public /v1/models list.
 // Names shared by several providers get ordered "-1".." -N" suffixes so every
 // listed id stays uniquely callable.
@@ -113,8 +177,9 @@ function buildPublicList(entries, aliases) {
 // Resolve a display alias back to its canonical "pid/model" id. Also accepts
 // the ordered "<alias>-N" ids published for names shared by several providers.
 // Aliases are additive: anything that is not an alias value passes through.
-async function resolveAliasId(name) {
-  const aliases = await loadAliases();
+// Callers may pass a preloaded alias map so the store is only read once.
+async function resolveAliasId(name, preloaded) {
+  const aliases = preloaded || await loadAliases();
   const keys = Object.keys(aliases).sort();
   const byValue = new Map();
   for (const k of keys) {
@@ -254,8 +319,13 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'POST' && path === '/v1/chat/completions') {
     let body = {};
     try { body = JSON.parse(event.body || '{}'); } catch { return err(400, 'Bad request — body must be JSON'); }
+    // Client-visible name as typed, captured before alias resolution so the
+    // response can be rewritten to it. Alias map is read once and reused for
+    // both the reverse lookup and the public-name computation.
+    const requestedName = String(body.model || '').trim();
+    const aliases = await loadAliases();
     let full = String(body.model || '');
-    full = await resolveAliasId(full);
+    full = await resolveAliasId(full, aliases);
     let providerId = '';
     let model = '';
     const slash = full.indexOf('/');
@@ -299,10 +369,15 @@ exports.handler = async (event) => {
         return err(404, 'Unknown model: ' + full);
       }
     }
+    // Authoritative public name for this call: stored custom display name
+    // first, then the name the client typed, then the plain (routing-prefix
+    // stripped) model id. This is the only model identity we ever return.
+    const publicModel = publicName(providerId, model, aliases) || requestedName || String(model);
     // Thin pipe: forward the client's body verbatim to the real provider
     // (only the model id is swapped for the resolved upstream id) and hand
-    // back the provider's own status + body untouched. No reshaping — every
-    // provider here already speaks OpenAI.
+    // back the provider's own status + body, with the real model id and
+    // provider name scrubbed. No reshaping — every provider here already
+    // speaks OpenAI.
     // Usage tracking never blocks the hot path (waitUntil when available).
     const touchKey = () => {
       if (!keyEntry) return;
@@ -341,11 +416,11 @@ exports.handler = async (event) => {
           throw e;
         }
         touchKey();
-        return { statusCode: 200, stream: upstream.body, headers: cors(event.headers) };
+        return { statusCode: 200, stream: scrubStream(upstream.body, upstreamModel, publicModel), headers: cors(event.headers) };
       }
       const text = await upstream.text().catch(() => '');
       touchKey();
-      return { statusCode: upstream.status, body: text, headers: cors(event.headers) };
+      return { statusCode: upstream.status, body: sanitizeChatBody(text, publicModel), headers: cors(event.headers) };
     };
     const modelFailed = (status, msg) => isModelError(status, msg && (msg.message || msg));
 
@@ -392,7 +467,7 @@ exports.handler = async (event) => {
       }
       const cand = candidates[ci++];
       if (body.stream && cand.provider.noAuth) {
-        lastErr = { status: 400, msg: 'Streaming is not supported for provider "' + cand.provider.id + '"' };
+        lastErr = { status: 400, msg: 'Streaming is not supported for this model' };
         continue;
       }
       try {

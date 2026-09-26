@@ -8,6 +8,7 @@ const FNS = {
   v1: require('../netlify/functions/v1').handler,
   'api-keys': require('../netlify/functions/api-keys').handler,
   'model-visibility': require('../netlify/functions/model-visibility').handler,
+  proxy: require('../netlify/functions/proxy').handler,
 };
 
 function corsHeaders(request) {
@@ -26,10 +27,16 @@ function corsHeaders(request) {
   };
 }
 
-function toEvent(request, body, path, ctx) {
+function toEvent(request, body, path, ctx, url) {
   const headers = {};
   request.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
   const ev = { httpMethod: request.method, headers, body, path };
+  if (url) {
+    const qp = {};
+    for (const [k, v] of url.searchParams) qp[k] = v;
+    ev.queryStringParameters = qp;
+    ev.rawQuery = url.search.replace(/^\?/, '');
+  }
   if (ctx) ev._ctx = ctx;
   return ev;
 }
@@ -41,10 +48,10 @@ function json(statusCode, body, extraHeaders, request) {
   });
 }
 
-async function runFn(fn, request, path, ctx) {
+async function runFn(fn, request, path, ctx, url) {
   const body = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method) ? await request.text() : '';
   try {
-    const result = await fn(toEvent(request, body, path, ctx));
+    const result = await fn(toEvent(request, body, path, ctx, url));
     if (result && result.stream && typeof result.stream.getReader === 'function') {
       return new Response(result.stream, {
         status: result.statusCode || 200,
@@ -82,7 +89,7 @@ export default {
     }
 
     if (url.pathname === '/v1' || url.pathname.startsWith('/v1/')) {
-      return runFn(FNS.v1, request, url.pathname, ctx);
+      return runFn(FNS.v1, request, url.pathname, ctx, url);
     }
 
     const apiMatch =
@@ -91,7 +98,7 @@ export default {
     if (apiMatch && ['POST', 'GET', 'PUT', 'DELETE', 'PATCH', 'HEAD'].includes(request.method)) {
       const fn = FNS[apiMatch[1]];
       if (!fn) return json(404, JSON.stringify({ error: 'Unknown function' }), null, request);
-      return runFn(fn, request, url.pathname, ctx);
+      return runFn(fn, request, url.pathname, ctx, url);
     }
 
     const res = await env.ASSETS.fetch(request);

@@ -16,6 +16,9 @@ const PROVIDERS = [
     color: '#76b900',
     baseURL: 'https://integrate.api.nvidia.com/v1',
     apiKey: '',
+    // NIM is slow to first token on big models. A 20s cap turned healthy
+    // probes into spurious failures, so give this provider its own budget.
+    timeoutMs: 120000,
   },
   {
     id: 'tokenharbor',
@@ -68,8 +71,11 @@ const PROVIDERS = [
   },
 ];
 
+// Site probes only. `provider.timeoutMs` is an optional per-provider override
+// (NIM needs minutes, everyone else is fine on the 20s default); the gateway
+// pipe is unaffected — see providerFetch below.
 function makeClient(provider) {
-  return new OPENAI({ apiKey: secretFor(provider.id) || provider.apiKey, baseURL: provider.baseURL, defaultHeaders: provider.defaultHeaders, timeout: 20000, maxRetries: 1 });
+  return new OPENAI({ apiKey: secretFor(provider.id) || provider.apiKey, baseURL: provider.baseURL, defaultHeaders: provider.defaultHeaders, timeout: provider.timeoutMs || 20000, maxRetries: 1 });
 }
 
 // Raw request parts for the thin gateway pipe. Same auth + headers as

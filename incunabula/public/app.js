@@ -38,6 +38,7 @@ const ICON = {
   eye: SVG('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
   eyeOff: SVG('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'),
   copyCheck: SVG('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/><polyline points="9 14 11 16 15 12"/>'),
+  reset: SVG('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/><line x1="8" y1="15" x2="16" y2="15"/>'),
 };
 
 const API_BASE = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.hostname.endsWith('.trycloudflare.com'))
@@ -247,6 +248,31 @@ function buildCard(p, index) {
   const isOn = (m) => (keyOf(m) in st.vis) ? !!st.vis[keyOf(m)] : isFreeModel(m);
   const aliasOf = (m) => st.aliases[keyOf(m)] || '';
 
+  // Shared display-name save path (inline editor + reset button). Empty alias
+  // clears the override and puts the plain model id back. opts:
+  //   locks  - buttons disabled while the POST is in flight
+  //   okMsg  - success toast (defaults to saved/cleared wording)
+  //   errMsg - failure toast (defaults to the server message)
+  //   snap   - re-render on failure, so a row-level control snaps back
+  //            (never set for the inline editor: it owns the live row)
+  async function saveAlias(m, alias, opts) {
+    const o = opts || {};
+    const locks = o.locks || [];
+    for (const b of locks) b.disabled = true;
+    try {
+      await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, alias });
+      if (alias) st.aliases[keyOf(m)] = alias;
+      else delete st.aliases[keyOf(m)];
+      applySelect();
+      renderModelList();
+      toast(o.okMsg || (alias ? 'Display name saved' : 'Display name cleared'), 'ok');
+    } catch (ex) {
+      for (const b of locks) b.disabled = false;
+      if (o.snap) { applySelect(); renderModelList(); }
+      toast(o.errMsg || ex.message || 'Save failed', 'err');
+    }
+  }
+
   /* header */
   const head = el('header', 'st-head');
   const idRow = el('div', 'st-id');
@@ -427,6 +453,9 @@ function buildCard(p, index) {
     if (nameEl) nameEl.hidden = true;
     if (renEl) renEl.hidden = true;
     btn.hidden = true;
+    // Same rule for the reset control; both exit paths re-render the row.
+    const resetEl = row.querySelector('.m-reset-btn');
+    if (resetEl) resetEl.style.display = 'none';
 
     const wrap = el('span', 'ali-edit');
     const input = el('input', 'ali-input');
@@ -447,18 +476,7 @@ function buildCard(p, index) {
     xBtn.title = 'Cancel';
 
     async function post(alias) {
-      okBtn.disabled = xBtn.disabled = true;
-      try {
-        await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, alias });
-        if (alias) st.aliases[keyOf(m)] = alias;
-        else delete st.aliases[keyOf(m)];
-        applySelect();
-        renderModelList();
-        toast(alias ? 'Display name saved' : 'Display name cleared', 'ok');
-      } catch (ex) {
-        okBtn.disabled = xBtn.disabled = false;
-        toast('Save failed', 'err');
-      }
+      await saveAlias(m, alias, { locks: [okBtn, xBtn], errMsg: 'Save failed' });
     }
     function revert() {
       renderModelList();
@@ -498,6 +516,22 @@ function buildCard(p, index) {
     editBtn.title = 'Edit display name';
     editBtn.hidden = !active;
     editBtn.onclick = () => openAliasEdit(row, m, editBtn);
+    // m-alias-btn is reused for the 26px icon sizing + the [hidden] rule,
+    // since the shared stylesheet cannot be edited from here.
+    let resetBtn = null;
+    if (al) {
+      resetBtn = el('button', 'icon-btn m-reset-btn m-alias-btn');
+      resetBtn.type = 'button';
+      resetBtn.innerHTML = ICON.reset;
+      resetBtn.title = 'Reset to default name';
+      resetBtn.setAttribute('aria-label', 'Reset display name for ' + m);
+      resetBtn.hidden = !active;
+      resetBtn.onclick = (e) => {
+        e.stopPropagation();
+        saveAlias(m, '', { locks: [resetBtn], okMsg: 'Default name restored', snap: true });
+      };
+    }
+    const showRowTools = (on) => { editBtn.hidden = !on; if (resetBtn) resetBtn.hidden = !on; };
     const switchLabel = el('label', 'toggle');
     const cb = el('input');
     cb.type = 'checkbox';
@@ -510,19 +544,20 @@ function buildCard(p, index) {
     cb.addEventListener('change', async () => {
       st.vis[key] = cb.checked;
       row.classList.toggle('is-off', !cb.checked);
-      editBtn.hidden = !cb.checked;
+      showRowTools(cb.checked);
       applySelect();
       try { await callMethod('model-visibility', 'POST', { providerId: p.id, model: m, enabled: cb.checked }); }
       catch {
         st.vis[key] = !cb.checked;
         cb.checked = !cb.checked;
         row.classList.toggle('is-off', !cb.checked);
-        editBtn.hidden = !cb.checked;
+        showRowTools(cb.checked);
         applySelect();
         toast('Save failed', 'err');
       }
     });
-    row.append(editBtn, switchLabel);
+    if (resetBtn) row.append(editBtn, resetBtn, switchLabel);
+    else row.append(editBtn, switchLabel);
     return row;
   }
 
