@@ -25,3 +25,15 @@ class_name = "ProxyMode"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ProxyMode"]
+
+# Our own request counter, replacing Cloudflare GraphQL analytics (and the
+# expiring CF_API_TOKEN it needed). One instance serialises every increment so
+# the counts are exact; the dashboard reads today's totals from it.
+[[durable_objects.bindings]]
+name = "USAGE_COUNTS"
+class_name = "UsageCounts"
+
+# Append-only: v1 above is already deployed and must not be renumbered.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UsageCounts"]

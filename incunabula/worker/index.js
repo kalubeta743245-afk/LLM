@@ -1,4 +1,6 @@
 // Cloudflare Worker entrypoint — same API as Netlify/local, same routes.
+import { UsageCounts, serviceBucket } from './usage-do.js';
+
 const FNS = {
   models: require('../netlify/functions/models').handler,
   chat: require('../netlify/functions/chat').handler,
@@ -73,18 +75,49 @@ async function runFn(fn, request, path, ctx, url) {
   }
 }
 
+// Our own request counter. Every request that reaches the worker is bucketed
+// once, here, and counted off the critical path — so no individual function
+// below has to know about it and no request ever waits on the counter.
+const USAGE_DO_NAME = 'usage';
+
+async function bumpUsage(binding, service) {
+  try {
+    const id = binding.idFromName(USAGE_DO_NAME);
+    const res = await binding.get(id).fetch('https://do/usage', {
+      method: 'POST',
+      body: JSON.stringify({ service }),
+    });
+    // Nothing reads this response; drain it so the stub releases cleanly.
+    if (res && res.body && typeof res.body.cancel === 'function') await res.body.cancel();
+  } catch { /* counting must never surface */ }
+}
+
+function countRequest(url, env, ctx) {
+  try {
+    if (!ctx || typeof ctx.waitUntil !== 'function') return;
+    const binding = (env && env.USAGE_COUNTS) || globalThis.USAGE_COUNTS;
+    if (!binding || typeof binding.idFromName !== 'function' || typeof binding.get !== 'function') return;
+    ctx.waitUntil(bumpUsage(binding, serviceBucket(url.pathname)));
+  } catch { /* counting must never break a request */ }
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
       if (env.MODELLAB_KV) globalThis.MODELLAB_KV = env.MODELLAB_KV;
       if (env.PROXY_MODE) globalThis.PROXY_MODE = env.PROXY_MODE;
+      if (env.USAGE_COUNTS) globalThis.USAGE_COUNTS = env.USAGE_COUNTS;
       if (env.SITE_PASSWORD) globalThis.SITE_PASSWORD = env.SITE_PASSWORD;
-      for (const k of ['NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'INCEPTION_API_KEY', 'APINEX_API_KEY', 'CF_API_TOKEN']) {
+      for (const k of ['NVIDIA_NIM_API_KEY', 'TOKENROUTER_API_KEY', 'ORCAROUTER_API_KEY', 'TOKENHARBOR_API_KEY', 'TOKENFORGE_API_KEY', 'INCEPTION_API_KEY', 'APINEX_API_KEY']) {
         if (env[k]) globalThis[k] = env[k];
       }
     } catch {}
 
     const url = new URL(request.url);
+
+    // Counted before any routing below — one call site, every request,
+    // OPTIONS preflights included (they bucket as their own route).
+    countRequest(url, env, ctx);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -108,6 +141,7 @@ export default {
   },
 };
 
-// The Durable Object class lives in its own module but `main` stays
-// worker/index.js, so it is re-exported here for wrangler to find and bind.
+// The Durable Object classes live in their own modules but `main` stays
+// worker/index.js, so they are re-exported here for wrangler to find and bind.
 export { ProxyMode } from './proxy-mode-do.js';
+export { UsageCounts } from './usage-do.js';

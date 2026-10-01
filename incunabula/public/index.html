@@ -440,21 +440,9 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 .usage-stat{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px 0 0;border-top:1px solid var(--line)}
 .usage-stat-k{font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
 .usage-stat-v{font:400 15px/1.3 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
-.usage-stat.has-err .usage-stat-v{color:var(--err)}
-.usage-latency{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px 16px}
-.usage-mini{display:flex;align-items:baseline;gap:8px;min-width:0}
-.usage-mini-k{font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap}
-.usage-mini-v{margin-left:auto;font:400 11px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-3);white-space:nowrap}
-.usage-track{height:88px;display:flex;align-items:flex-end;gap:1px;padding:0 1px;border-bottom:1px solid var(--line)}
-.usage-bar{position:relative;flex:1 1 0;min-width:0;min-height:2px;background:var(--accent-line);border-radius:1px 1px 0 0}
-.usage-bar.has-err::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--err);border-radius:1px 1px 0 0}
-.usage-chart .hint{display:block;padding:14px 0}
-.usage-status{display:flex;flex-direction:column}
 .usage-srow{display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
 .usage-srow:last-child{border-bottom:none}
 .usage-sname{flex:1;min-width:0;font:400 11px var(--mono);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
-.usage-sname.ok{color:var(--ok)}
-.usage-sname.err{color:var(--err)}
 .usage-scnt{font:400 11px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-4);white-space:nowrap}
 .usage-fix{margin-top:6px;color:var(--ink-3)}
 #usage-out{min-height:0;padding:10px 12px;font-size:11px;line-height:1.55}
@@ -497,9 +485,7 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
   #proxy-card .pill{min-height:36px}
   #proxy-card .px-mode-row .toggle{min-height:36px}
   #usage-card .btn-sm{min-height:36px}
-  #usage-card .pill{min-height:36px}
   .usage-stats{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
-  .usage-track{height:72px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -635,63 +621,35 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
       <section class="console" id="usage-card" aria-label="Cloudflare usage">
         <div class="console-head">
           <span class="console-title">cloudflare usage</span>
-          <span class="console-meta" id="usage-when">—</span>
         </div>
         <div class="console-body">
           <div class="cred-line usage-ctl">
-            <span class="cred-k">Window</span>
-            <div class="pills" id="usage-pills">
-              <button class="pill on" type="button" data-hours="24">24h</button>
-              <button class="pill" type="button" data-hours="168">7d</button>
-              <button class="pill" type="button" data-hours="720">30d</button>
-            </div>
-            <button class="btn btn-sm" id="usage-refresh" title="Re-read Cloudflare analytics">
+            <span class="cred-k">Today</span>
+            <span class="hint" id="usage-day">—</span>
+            <button class="btn btn-sm" id="usage-refresh" title="Re-read today's counters">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               <span>Refresh</span>
             </button>
           </div>
           <div class="usage-stats" id="usage-stats">
             <div class="usage-stat">
-              <span class="usage-stat-k">Requests</span>
-              <span class="usage-stat-v" id="usage-v-requests">—</span>
-            </div>
-            <div class="usage-stat" id="usage-t-errors">
-              <span class="usage-stat-k">Errors</span>
-              <span class="usage-stat-v" id="usage-v-errors">—</span>
+              <span class="usage-stat-k">Total requests</span>
+              <span class="usage-stat-v" id="usage-v-total">—</span>
             </div>
             <div class="usage-stat">
-              <span class="usage-stat-k">Success rate</span>
-              <span class="usage-stat-v" id="usage-v-success">—</span>
+              <span class="usage-stat-k">Remaining</span>
+              <span class="usage-stat-v" id="usage-v-remaining">—</span>
+              <span class="usage-stat-k" id="usage-v-limit">of — daily</span>
             </div>
             <div class="usage-stat">
-              <span class="usage-stat-k">Subrequests</span>
-              <span class="usage-stat-v" id="usage-v-subrequests">—</span>
+              <span class="usage-stat-k">Services</span>
+              <span class="usage-stat-v" id="usage-v-services">—</span>
             </div>
           </div>
-          <div class="usage-latency" id="usage-latency">
-            <div class="usage-mini">
-              <span class="usage-mini-k">CPU p50</span>
-              <span class="usage-mini-v" id="usage-v-cpu50">—</span>
-            </div>
-            <div class="usage-mini">
-              <span class="usage-mini-k">CPU p99</span>
-              <span class="usage-mini-v" id="usage-v-cpu99">—</span>
-            </div>
-            <div class="usage-mini">
-              <span class="usage-mini-k">Dur p50</span>
-              <span class="usage-mini-v" id="usage-v-dur50">—</span>
-            </div>
-            <div class="usage-mini">
-              <span class="usage-mini-k">Dur p99</span>
-              <span class="usage-mini-v" id="usage-v-dur99">—</span>
-            </div>
-          </div>
-          <div class="usage-chart" id="usage-chart">
+          <div id="usage-services">
             <p class="hint">Waiting for the first read.</p>
           </div>
-          <p class="hint" id="usage-legend">Bars are hourly request counts, oldest at left.</p>
-          <div class="usage-status" id="usage-status"></div>
-          <div class="output loading" id="usage-out">Reading Cloudflare analytics…</div>
+          <div class="output loading" id="usage-out">Reading counters…</div>
         </div>
       </section>
 
@@ -766,6 +724,6 @@ dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="app.js?v=73"></script>
+<script src="app.js?v=74"></script>
 </body>
 </html>

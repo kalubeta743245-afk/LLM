@@ -1,52 +1,30 @@
 const { cors } = require('./_shared');
 const { checkPassword } = require('./auth');
 
-// Cloudflare GraphQL analytics for the `ai` worker (ai.labai.workers.dev).
-const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
-const ACCOUNT = '82c9984e7a80323c6c781dc9f99eff0d';
-const SCRIPT = 'ai';
-// Hard ceiling on what a caller may ask for — 24h / 7d / 30d. Anything else
-// (NaN, negative, absurd, wrong type) falls back to 24h so nobody can
-// trigger an unbounded scan of the account.
-const ALLOWED_HOURS = [24, 168, 720];
-const DEFAULT_HOURS = 24;
-const TIMEOUT_MS = 20000;
+// Today's request counts, read from our own Durable Object (bound as
+// USAGE_COUNTS, name 'usage') rather than Cloudflare GraphQL analytics. The
+// old CF_API_TOKEN path is gone: the token expired, and Cloudflare could not
+// report per-route data for a workers.dev script anyway. Counting happens in
+// worker/index.js, off the critical path, so this endpoint is a pure read.
+const DO_NAME = 'usage';
+const DO_URL = 'https://do/usage';
+const TIMEOUT_MS = 10000;
 
-// No `orderBy` and no top-level `datetime_geq` — both are rejected by the API;
-// the since-filter lives inside `filter` next to `scriptName`.
-function buildQuery(sinceIso) {
-  return `{ viewer { accounts(filter:{accountTag:"${ACCOUNT}"}) { workersInvocationsAdaptive(limit:200, filter:{scriptName:"${SCRIPT}", datetime_geq:"${sinceIso}"}) { sum { requests errors subrequests } quantiles { cpuTimeP50 cpuTimeP99 durationP50 durationP99 } dimensions { datetimeHour status } } } } }`;
-}
+// Cloudflare Workers on the Free plan allow this many requests per day. Only a
+// reference budget for the "remaining" tile — it is not enforced anywhere.
+// Override with USAGE_DAILY_LIMIT if the plan or cap changes.
+const DEFAULT_DAILY_LIMIT = 100000;
 
-function apiToken() {
-  try { if (typeof process !== 'undefined' && process.env && process.env.CF_API_TOKEN) return String(process.env.CF_API_TOKEN); } catch { /* no process */ }
-  try { if (typeof globalThis !== 'undefined' && globalThis.CF_API_TOKEN) return String(globalThis.CF_API_TOKEN); } catch { /* no globalThis */ }
-  return '';
-}
-
-function clampHours(v) {
-  if (typeof v === 'number' && Number.isFinite(v) && ALLOWED_HOURS.indexOf(v) !== -1) return v;
-  return DEFAULT_HOURS;
-}
-
-// GraphQL numerics are nullable; anything missing becomes 0 rather than NaN.
-const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
-const r4 = (v) => Math.round(v * 1e4) / 1e4;
-const r6 = (v) => Math.round(v * 1e6) / 1e6;
-
-// Collapse an upstream failure into one short, displayable line.
-function shortMessage(v, fallback) {
-  const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
-  if (!s) return fallback;
-  return s.length > 200 ? s.slice(0, 197) + '...' : s;
-}
-
-// Canonical hour bucket key: YYYY-MM-DDTHH:00:00Z (second precision, no
-// millis) so points from different statuses in the same hour merge and sort.
-function hourKey(v) {
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return String(v || '');
-  return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+function dailyLimit() {
+  let raw = null;
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.USAGE_DAILY_LIMIT) raw = process.env.USAGE_DAILY_LIMIT;
+  } catch { /* no process */ }
+  if (raw == null || raw === '') {
+    try { if (globalThis && globalThis.USAGE_DAILY_LIMIT) raw = globalThis.USAGE_DAILY_LIMIT; } catch { /* no globalThis */ }
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_LIMIT;
 }
 
 const reply = (statusCode, payload) => ({
@@ -54,6 +32,43 @@ const reply = (statusCode, payload) => ({
   headers: { ...cors(), 'Cache-Control': 'no-store' },
   body: JSON.stringify(payload),
 });
+
+const today = () => new Date().toISOString().slice(0, 10);
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+
+// Shaped exactly like a real read so the UI has nothing special to detect —
+// `configured:false` is the only difference, and it renders as "not counting".
+function zeroPayload(configured) {
+  const limit = dailyLimit();
+  return {
+    ok: true,
+    configured,
+    day: today(),
+    total: 0,
+    dailyLimit: limit,
+    remaining: limit,
+    services: [],
+    days: [],
+  };
+}
+
+// Busy counter: largest first, name as a stable tiebreak so equal counts never
+// shuffle between reads.
+function serviceRows(services) {
+  if (!services || typeof services !== 'object' || Array.isArray(services)) return [];
+  return Object.keys(services)
+    .map((service) => ({ service: String(service), requests: num(services[service]) }))
+    .sort((a, b) => b.requests - a.requests || a.service.localeCompare(b.service));
+}
+
+// Oldest first; a day the counter never saw is simply absent.
+function dayRows(days) {
+  if (!Array.isArray(days)) return [];
+  return days
+    .map((d) => (d && typeof d === 'object' ? { day: String(d.day || ''), total: num(d.total) } : null))
+    .filter((d) => d && /^\d{4}-\d{2}-\d{2}$/.test(d.day))
+    .sort((a, b) => a.day.localeCompare(b.day));
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: { ...cors(), 'Cache-Control': 'no-store' } };
@@ -67,99 +82,40 @@ exports.handler = async (event) => {
     return reply(401, { ok: false, error: 'Wrong password' });
   }
 
-  const hours = clampHours(body.hours);
-  const token = apiToken();
-  if (!token) {
-    return reply(503, { ok: false, error: 'Cloudflare analytics token not configured', configured: false });
+  // No binding (Netlify, or a worker build without the DO) is a zeroed page,
+  // never an error: counting is a convenience, not the endpoint's job.
+  let ns = null;
+  try { ns = (globalThis && globalThis.USAGE_COUNTS) || null; } catch { ns = null; }
+  if (!ns || typeof ns.idFromName !== 'function' || typeof ns.get !== 'function') {
+    return reply(200, zeroPayload(false));
   }
 
-  const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let upstream;
+  let data;
   try {
-    upstream = await fetch(GRAPHQL_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: buildQuery(since) }),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    return reply(502, { ok: false, error: shortMessage(e && e.name === 'AbortError' ? 'Cloudflare request timed out' : e && e.message, 'Cloudflare request failed') });
+    const res = await ns.get(ns.idFromName(DO_NAME)).fetch(DO_URL, { signal: controller.signal });
+    if (!res || typeof res.json !== 'function') return reply(200, zeroPayload(false));
+    data = await res.json();
+  } catch {
+    // A transient counter hiccup must not look like an auth/analytics failure
+    // to the dashboard, so degrade to zeros instead of a 502.
+    return reply(200, zeroPayload(false));
   } finally {
     clearTimeout(timer);
   }
+  if (!data || typeof data !== 'object' || data.ok === false) return reply(200, zeroPayload(false));
 
-  let json;
-  try {
-    json = await upstream.json();
-  } catch (e) {
-    return reply(502, { ok: false, error: shortMessage(e && e.message, 'Cloudflare returned a non-JSON response') });
-  }
-  if (!upstream.ok) {
-    return reply(502, { ok: false, error: shortMessage((json && json.errors && json.errors[0] && json.errors[0].message) || 'Cloudflare API HTTP ' + upstream.status, 'Cloudflare API HTTP ' + upstream.status) });
-  }
-  if (json && Array.isArray(json.errors) && json.errors.length) {
-    return reply(502, { ok: false, error: shortMessage(json.errors[0] && json.errors[0].message, 'Cloudflare GraphQL error') });
-  }
-
-  const points = (json && json.data && json.data.viewer && Array.isArray(json.data.viewer.accounts) && json.data.viewer.accounts[0] && json.data.viewer.accounts[0].workersInvocationsAdaptive) || [];
-  const list = Array.isArray(points) ? points : [];
-
-  let requests = 0;
-  let errors = 0;
-  let subrequests = 0;
-  let peak = null;      // busiest single point
-  let peakReq = -1;
-  const statuses = new Map();
-  const hoursMap = new Map();
-
-  for (const p of list) {
-    const sum = (p && p.sum) || {};
-    const q = (p && p.quantiles) || {};
-    const dim = (p && p.dimensions) || {};
-    const r = num(sum.requests);
-    const e = num(sum.errors);
-    requests += r;
-    errors += e;
-    subrequests += num(sum.subrequests);
-    if (r > peakReq) { peakReq = r; peak = q; }
-
-    const status = String(dim.status || 'unknown');
-    const s = statuses.get(status) || { status, requests: 0, errors: 0 };
-    s.requests += r;
-    s.errors += e;
-    statuses.set(status, s);
-
-    const hour = hourKey(dim.datetimeHour);
-    const h = hoursMap.get(hour) || { hour, requests: 0, errors: 0 };
-    h.requests += r;
-    h.errors += e;
-    hoursMap.set(hour, h);
-  }
-
-  const pq = (peak || {});
-  const successRate = requests > 0 ? r4((requests - errors) / requests) : 0;
-
+  const limit = dailyLimit();
+  const total = num(data.total);
   return reply(200, {
     ok: true,
     configured: true,
-    script: SCRIPT,
-    account: ACCOUNT,
-    hours,
-    generatedAt: new Date().toISOString(),
-    totals: { requests, errors, subrequests, successRate },
-    // `quantiles` are per returned point, not global. You cannot average or
-    // request-weight percentiles (both are statistically invalid), and the API
-    // exposes no global aggregate — so report the quantiles of the single
-    // busiest point, i.e. the bucket that dominates real traffic.
-    latency: {
-      cpuP50: r6(num(pq.cpuTimeP50)),
-      cpuP99: r6(num(pq.cpuTimeP99)),
-      durationP50: r4(num(pq.durationP50)), // seconds
-      durationP99: r4(num(pq.durationP99)), // seconds
-    },
-    byStatus: Array.from(statuses.values()).sort((a, b) => b.requests - a.requests || a.status.localeCompare(b.status)),
-    timeline: Array.from(hoursMap.values()).sort((a, b) => (Date.parse(a.hour) || 0) - (Date.parse(b.hour) || 0)),
+    day: /^\d{4}-\d{2}-\d{2}$/.test(String(data.day || '')) ? String(data.day) : today(),
+    total,
+    dailyLimit: limit,
+    remaining: Math.max(0, limit - total),
+    services: serviceRows(data.services),
+    days: dayRows(data.days),
   });
 };

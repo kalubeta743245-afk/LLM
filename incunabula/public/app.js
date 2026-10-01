@@ -7,6 +7,7 @@ const PROVIDERS = [
   { id:'inception', name:'Inception', color:'#ff3b30', baseURL:'https://api.inceptionlabs.ai/v1', defaultModel:'mercury', icon:'https://inceptionlabs.ai/favicon.ico' },
   { id:'kilo', name:'Kilo Gate', color:'#ff6a00', baseURL:'https://api.kilo.ai/api/gateway', noAuth:true, defaultModel:'anthropic/claude-sonnet-4.5', icon:'https://kilo.ai/favicon.ico' },
   { id:'apinex', name:'APInex', color:'#5C766D', baseURL:'https://api.apinex.bond/v1', defaultModel:'free/deepseek-v4.1-flash', icon:'https://www.google.com/s2/favicons?domain=apinex.bond&sz=128' },
+  { id:'novita', name:'Novita', color:'#8b7cf6', baseURL:'https://api.novita.ai/v3/openai', defaultModel:'inclusionai/ling-3.1-flash', icon:'https://novita.ai/favicon.ico' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;
@@ -896,176 +897,96 @@ function wireProxyPanel() {
 }
 
 /* ─── Cloudflare usage dashboard ─── */
-// A live read of the `ai` worker's own Workers analytics. Like /api/proxy this
-// endpoint sits on this origin rather than the Netlify function base, so it is
-// fetched directly. One read on wire-up; after that only a pill or the Refresh
-// button refetches — never a timer.
-const USAGE_WINDOWS = { 24:'24h', 168:'7d', 720:'30d' };
-const USAGE_FIX = 'Set the analytics token: wrangler secret put CF_API_TOKEN — the token needs Account Analytics:Read.';
+// Today's request counts, kept by the worker itself in a Durable Object — no
+// Cloudflare analytics token involved. This endpoint sits on this origin rather
+// than the Netlify function base, so it is fetched directly. One read on
+// wire-up; after that only the Refresh button refetches — never a timer.
+const USAGE_FIX = 'Counting is not active: redeploy the worker with the USAGE_COUNTS Durable Object binding.';
 
 function wireUsageDashboard() {
   const card = document.getElementById('usage-card');
-  const when = document.getElementById('usage-when');
-  const pillsBox = document.getElementById('usage-pills');
   const refreshBtn = document.getElementById('usage-refresh');
   const stats = document.getElementById('usage-stats');
-  const latBox = document.getElementById('usage-latency');
-  const chart = document.getElementById('usage-chart');
-  const legend = document.getElementById('usage-legend');
-  const statusBox = document.getElementById('usage-status');
+  const services = document.getElementById('usage-services');
   const out = document.getElementById('usage-out');
-  if (!card || !stats || !latBox || !chart || !out) return;
+  if (!card || !stats || !services || !out) return;
 
-  const vReq = document.getElementById('usage-v-requests');
-  const vErr = document.getElementById('usage-v-errors');
-  const vRate = document.getElementById('usage-v-success');
-  const vSub = document.getElementById('usage-v-subrequests');
-  const tErr = document.getElementById('usage-t-errors');
-  const vCpu50 = document.getElementById('usage-v-cpu50');
-  const vCpu99 = document.getElementById('usage-v-cpu99');
-  const vDur50 = document.getElementById('usage-v-dur50');
-  const vDur99 = document.getElementById('usage-v-dur99');
-  if (!vReq || !vErr || !vRate || !vSub || !vCpu50 || !vCpu99 || !vDur50 || !vDur99) return;
+  const vTotal = document.getElementById('usage-v-total');
+  const vRemaining = document.getElementById('usage-v-remaining');
+  const vLimit = document.getElementById('usage-v-limit');
+  const vServices = document.getElementById('usage-v-services');
+  const dayOut = document.getElementById('usage-day');
+  if (!vTotal || !vRemaining || !vServices) return;
 
-  let hours = 24;
-  let running = null;
-
-  // GraphQL numerics are nullable upstream; anything odd reads as 0 here.
   const num = x => (Number.isFinite(Number(x)) ? Number(x) : 0);
   const nf = x => num(x).toLocaleString();
-  // cpu* arrive in seconds and are tiny, so they read as ms; duration only
-  // becomes seconds once ms stops being legible.
-  const asMs = x => (num(x) * 1000).toFixed(2) + 'ms';
-  const asDur = x => {
-    const s = num(x);
-    if (s >= 10) return s.toFixed(1) + 's';
-    if (s >= 1) return s.toFixed(2) + 's';
-    return (s * 1000).toFixed(0) + 'ms';
-  };
-  const hourLabel = iso => {
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit' });
-  };
-  const win = h => USAGE_WINDOWS[h] || h + 'h';
 
-  function renderChart(rows) {
-    const list = (Array.isArray(rows) ? rows : [])
-      .filter(b => b && (num(b.requests) > 0 || num(b.errors) > 0))
-      .slice()
-      .sort((a, b) => (Date.parse(a.hour) || 0) - (Date.parse(b.hour) || 0));
-    chart.innerHTML = '';
-    if (!list.length) {
-      chart.appendChild(el('p', 'hint', 'No traffic in this window.'));
-      return 0;
-    }
-    const peak = list.reduce((m, b) => Math.max(m, num(b.requests)), 0);
-    const track = el('div', 'usage-track');
-    track.setAttribute('role', 'img');
-    track.setAttribute('aria-label', 'Hourly requests, oldest at left');
-    for (const b of list) {
-      const req = num(b.requests), err = num(b.errors);
-      const bar = el('div', 'usage-bar' + (err > 0 ? ' has-err' : ''));
-      bar.style.height = (peak > 0 ? Math.max(2, Math.round((req / peak) * 100)) : 2) + '%';
-      bar.title = hourLabel(b.hour) + ' · ' + nf(req) + ' req · ' + nf(err) + ' err';
-      track.appendChild(bar);
-    }
-    chart.appendChild(track);
-    return list.length;
+  // The server already sorts this; a row that arrives unordered or missing is
+  // rendered as zero rather than as NaN.
+  function rows(list) {
+    return (Array.isArray(list) ? list : [])
+      .map(s => ({ service: String((s && s.service) || 'unknown'), requests: num(s && s.requests) }))
+      .sort((a, b) => b.requests - a.requests || a.service.localeCompare(b.service));
   }
 
-  function renderStatus(rows) {
-    const list = Array.isArray(rows) ? rows : [];
-    statusBox.innerHTML = '';
+  function paint(d) {
+    const total = num(d.total);
+    const limit = num(d.dailyLimit);
+    const remaining = Math.max(0, num(d.remaining));
+    const list = rows(d.services);
+
+    vTotal.textContent = nf(total);
+    vRemaining.textContent = nf(remaining);
+    vServices.textContent = nf(list.length);
+    if (vLimit) vLimit.textContent = 'of ' + nf(limit) + ' daily';
+    if (dayOut) dayOut.textContent = d.day ? String(d.day) : '—';
+
+    services.innerHTML = '';
     if (!list.length) {
-      statusBox.appendChild(el('p', 'hint', 'No status breakdown in this window.'));
-      return;
-    }
-    for (const s of list) {
-      const name = String((s && s.status) || 'unknown');
-      const tone = name === 'success' ? ' ok' : (name === 'scriptThrewException' ? ' err' : '');
-      const row = el('div', 'usage-srow');
-      row.append(
-        el('span', 'usage-sname' + tone, name),
-        el('span', 'usage-scnt', nf(s.requests) + ' req'),
-        el('span', 'usage-scnt', nf(s.errors) + ' err')
-      );
-      row.title = name + ' · ' + nf(s.requests) + ' requests · ' + nf(s.errors) + ' errors';
-      statusBox.appendChild(row);
-    }
-  }
-
-  function paint(d, h) {
-    const t = (d.totals && typeof d.totals === 'object') ? d.totals : {};
-    const requests = num(t.requests), errors = num(t.errors);
-    // Prefer the server's rate; fall back to deriving it if it is missing.
-    const rate = (typeof t.successRate === 'number' && isFinite(t.successRate))
-      ? t.successRate
-      : (requests > 0 ? (requests - errors) / requests : 0);
-    vReq.textContent = nf(requests);
-    vErr.textContent = nf(errors);
-    vRate.textContent = (rate * 100).toFixed(1) + '%';
-    vSub.textContent = nf(t.subrequests);
-    if (tErr) tErr.classList.toggle('has-err', errors > 0);
-
-    const l = (d.latency && typeof d.latency === 'object') ? d.latency : null;
-    vCpu50.textContent = l && l.cpuP50 != null ? asMs(l.cpuP50) : '—';
-    vCpu99.textContent = l && l.cpuP99 != null ? asMs(l.cpuP99) : '—';
-    vDur50.textContent = l && l.durationP50 != null ? asDur(l.durationP50) : '—';
-    vDur99.textContent = l && l.durationP99 != null ? asDur(l.durationP99) : '—';
-
-    const buckets = renderChart(d.timeline);
-    renderStatus(d.byStatus);
-    if (legend) {
-      legend.textContent = buckets
-        ? 'window ' + win(h) + ' · ' + buckets + ' hourly buckets · oldest at left, newest at right · a capped bar saw errors'
-        : 'window ' + win(h) + ' · no hourly buckets returned';
+      services.appendChild(el('p', 'hint', 'No traffic yet today.'));
+    } else {
+      for (const s of list) {
+        const row = el('div', 'usage-srow');
+        row.append(el('span', 'usage-sname', s.service), el('span', 'usage-scnt', nf(s.requests)));
+        row.title = s.service + ' · ' + nf(s.requests) + ' requests today';
+        services.appendChild(row);
+      }
     }
 
-    const errRate = requests > 0 ? (errors / requests * 100) : 0;
-    const summary = (d.script || 'ai') + ' · ' + nf(requests) + ' requests · ' + errRate.toFixed(1) + '% errors · window ' + win(h);
     out.className = 'output';
-    out.innerHTML = '<div class="body-in"><div>' + esc(summary) + '</div>'
-      + (d.configured === false ? '<div class="usage-fix">' + esc(USAGE_FIX) + '</div>' : '') + '</div>';
-    const s = hourLabel(d.generatedAt);
-    if (when) when.textContent = s ? 'read ' + s : '—';
+    if (d.configured === false) {
+      out.innerHTML = '<div class="body-in"><div>✗ Request counting is not active.</div>'
+        + '<div class="usage-fix">' + esc(USAGE_FIX) + '</div></div>';
+    } else {
+      out.innerHTML = '<div class="body-in"><div>'
+        + esc('ai · ' + nf(total) + ' requests today · ' + nf(remaining) + ' remaining')
+        + '</div></div>';
+    }
   }
 
   function paintError(ex) {
     const status = (ex && ex.status) || 0;
-    const payload = (ex && ex.payload) || {};
     const msg = String((ex && ex.message) || 'Request failed');
     out.className = 'output err';
-    if (status === 401) {
-      out.textContent = '✗ ' + msg;
-      toast(msg, 'err');
-      return;
-    }
-    // A missing token is a setup problem, not a transient one — say how to fix it.
-    if (status === 503 || payload.configured === false) {
-      out.innerHTML = '<div>' + esc('✗ ' + msg) + '</div><div class="usage-fix">' + esc(USAGE_FIX) + '</div>';
-      return;
-    }
     out.textContent = '✗ ' + msg;
+    if (status === 401) toast(msg, 'err');
   }
 
-  async function read(h) {
-    const want = num(h) || 24;
+  let running = null;
+
+  async function read() {
     // A newer read supersedes an in-flight one rather than racing it.
     if (running) { try { running.abort(); } catch {} }
     const ctrl = new AbortController();
     running = ctrl;
-    hours = want;
-    if (pillsBox) {
-      pillsBox.querySelectorAll('.pill').forEach(b => b.classList.toggle('on', (parseInt(b.dataset.hours, 10) || 0) === want));
-    }
     if (refreshBtn) setBusy(refreshBtn, true);
     out.className = 'output loading';
-    out.textContent = 'Reading Cloudflare analytics…';
+    out.textContent = 'Reading counters…';
     try {
       const r = await fetch(location.origin + '/api/usage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: localStorage.getItem('mlab_pw') || '', hours: want }),
+        body: JSON.stringify({ password: localStorage.getItem('mlab_pw') || '' }),
         signal: ctrl.signal
       });
       const d = await r.json().catch(() => ({}));
@@ -1076,7 +997,7 @@ function wireUsageDashboard() {
         e.payload = d;
         throw e;
       }
-      paint(d, want);
+      paint(d);
     } catch (ex) {
       if (ex && ex.name === 'AbortError') return;
       paintError(ex);
@@ -1085,14 +1006,9 @@ function wireUsageDashboard() {
     }
   }
 
-  pillsBox?.addEventListener('click', (e) => {
-    const pill = e.target.closest('.pill');
-    if (!pill || !pillsBox.contains(pill)) return;
-    read(parseInt(pill.dataset.hours, 10) || 24);
-  });
-  refreshBtn?.addEventListener('click', () => read(hours));
+  refreshBtn?.addEventListener('click', () => read());
 
-  read(24);
+  read();
 }
 
 function wireAllProviders() {

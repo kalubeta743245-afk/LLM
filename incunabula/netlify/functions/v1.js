@@ -5,7 +5,9 @@
 // display name when the owner set one. Provider routing stays internal.
 // Responses are scrubbed on the way out, so a client only ever sees the
 // public name and "incunabula" as the owner — never the real provider.
-// Auth: none — open gateway, no key needed.
+// Auth: required. Every /v1 request must carry a valid key as
+//   Authorization: Bearer <key>   (same keys as the API Keys panel).
+//   Missing and wrong keys are both rejected with an indistinguishable 401.
 // Non-streaming only. Reuses the existing chat/models handlers (ponytail).
 const { cors, storeGet, storeSet, getAllProviders, providerFetch, getOpenCodeModels } = require('./_shared');
 const chatFn = require('./chat').handler;
@@ -277,11 +279,17 @@ async function collectModels() {
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors(event.headers) };
-  const path = (event.path || '').replace(/\/+$/, '') || '/v1';
 
-  // No key needed — open gateway. A valid Bearer key is still accepted
-  // (for usage tracking) but never required.
+  // Auth gate: the whole universal /v1 base requires a valid key. Runs before
+  // any provider work, catalogue fetch or response body, so an unauthenticated
+  // request can never reach an upstream. A missing key and a wrong key take the
+  // exact same path (401, same body) so nothing leaks about which keys exist.
+  // Note: the internal catalogue build below calls modelsFn/chatFn directly in
+  // process — it never re-enters this handler, so it needs no key.
   const keyEntry = await findKey(event).catch(() => null);
+  if (!keyEntry) return err(401, 'Invalid or missing API key. Send it as: Authorization: Bearer <key>', event.headers);
+
+  const path = (event.path || '').replace(/\/+$/, '') || '/v1';
 
   if (event.httpMethod === 'GET' && (path === '/v1/models' || path === '/v1')) {
     // Fast path: reuse the cached internal entries (5-min TTL). Public names
