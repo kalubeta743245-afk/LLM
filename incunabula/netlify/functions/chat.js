@@ -1,12 +1,53 @@
-const { PROVIDERS, makeClient, cors, getAllProviders } = require('./_shared');
+const { PROVIDERS, makeClient, cors, getAllProviders, providerFetch, secretFor } = require('./_shared');
+
+// Most providers answer errors in the OpenAI shape ({"error":{"message":...}}),
+// which the SDK parses for us. A few return a flatter shape instead (Novita:
+// {"code":403,"reason":"NOT_ENOUGH_BALANCE","message":"..."}), and the SDK then
+// reports a bare "403 status code (no body)" — hiding the one line that says
+// what actually went wrong. Pull the real reason out of whatever shape arrives.
+function errorDetail(body) {
+  if (body == null) return '';
+  const j = typeof body === 'string' ? safeJson(body) : body;
+  if (!j || typeof j !== 'object') return String(body).slice(0, 300);
+  const e = j.error;
+  let msg = '';
+  if (typeof e === 'string') msg = e;
+  else if (e && typeof e === 'object') msg = e.message || e.detail || e.reason || '';
+  if (!msg) msg = j.message || j.reason || j.detail || j.description || '';
+  if (!msg && j.errors && j.errors[0]) msg = j.errors[0].message || String(j.errors[0]);
+  let code = (j.code != null && !/^\d+$/.test(String(j.code)) && String(j.code).length < 60) ? String(j.code) : '';
+  if (!code && e && typeof e === 'object' && e.code && !/^\d+$/.test(String(e.code)) && String(e.code).length < 60) code = String(e.code);
+  if (!msg) return '';
+  return code ? msg + ' (' + code + ')' : msg;
+}
+function safeJson(t) { try { return JSON.parse(t); } catch { return null; } }
+
+// One extra request, only on the error path, to read a body the SDK dropped.
+async function readUpstreamError(provider, chatParams) {
+  try {
+    const { url, headers } = providerFetch(provider);
+    const r = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(chatParams),
+      signal: AbortSignal.timeout(15000),
+    });
+    const t = await r.text().catch(() => '');
+    return errorDetail(t) || t.slice(0, 300);
+  } catch { return ''; }
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors() };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: cors(), body: JSON.stringify({ error: 'POST only' }) };
 
+  // Hoisted so the catch below can reach them when re-reading an upstream error.
+  let provider = null;
+  let chatParams = null;
+
   try {
     const { providerId, model, messages = [], maxTokens = 64, temperature = 0.3, reasoning } = JSON.parse(event.body || '{}');
-    const provider = (await getAllProviders()).find((p) => p.id === providerId);
+    provider = (await getAllProviders()).find((p) => p.id === providerId);
     if (!provider) {
       return { statusCode: 400, headers: cors(), body: JSON.stringify({ ok: false, error: 'Unknown provider: ' + providerId }) };
     }
@@ -20,7 +61,7 @@ exports.handler = async (event) => {
     // verbosity, service_tier, etc.). Only gateway-internal keys are stripped.
     // Never send both max_tokens and max_completion_tokens.
     const INTERNAL = new Set(['providerId', 'maxTokens', 'reasoning']);
-    const chatParams = { model, messages };
+    chatParams = { model, messages };
     for (const [k, v] of Object.entries(JSON.parse(event.body || '{}'))) {
       if (!INTERNAL.has(k) && v !== undefined) chatParams[k] = v;
     }
@@ -84,10 +125,22 @@ exports.handler = async (event) => {
       }),
     };
   } catch (e) {
+    // The OpenAI SDK reports failures as "<status> <statusText>" (often
+    // "403 status code (no body)") when the provider's error body is not in the
+    // shape the SDK recognises. Prefer the provider's own message.
+    const status = e.status || 0;
+    let detail = errorDetail(e.error);
+    if (!detail && e.response) detail = errorDetail(e.response.data);
+    if (!detail && provider && !provider.noAuth && /\(\s*no body\s*\)|status code$/i.test(String(e.message || ''))) {
+      detail = await readUpstreamError(provider, chatParams || {});
+    }
+    const msg = detail
+      ? status + ' ' + String(detail).slice(0, 300)
+      : (e.message || 'Request failed');
     return {
-      statusCode: e.status || 500,
+      statusCode: status || 500,
       headers: cors(),
-      body: JSON.stringify({ ok: false, error: e.message || 'Request failed', status: e.status }),
+      body: JSON.stringify({ ok: false, error: msg, status: status || undefined }),
     };
   }
 };

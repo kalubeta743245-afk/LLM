@@ -77,6 +77,14 @@ const PROVIDERS = [
     baseURL: 'https://api.novita.ai/v3/openai',
     apiKey: '',
   },
+  {
+    id: 'apmix',
+    name: 'APMIX',
+    tag: 'AM',
+    color: '#d946a8',
+    baseURL: 'https://api.apmix.ai/v1',
+    apiKey: '',
+  },
 ];
 
 // Site probes only. `provider.timeoutMs` is an optional per-provider override
@@ -118,6 +126,7 @@ function secretFor(id) {
     inception: 'INCEPTION_API_KEY',
     apinex: 'APINEX_API_KEY',
     novita: 'NOVITA_API_KEY',
+    apmix: 'APMIX_API_KEY',
   };
   const name = map[id];
   if (!name) return '';
