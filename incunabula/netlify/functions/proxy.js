@@ -21,13 +21,17 @@
 // deliberately NO cache of the value in any runtime: a cached flag is exactly
 // what let "universal" keep working after it had been switched off.
 //
-//   "xpart" (default) — the allowlist is closed, not open. Only
-//     `xpart.netlify.app` and its subdomains (any depth, any path) are ever
-//     forwarded to. The match is on whole DNS labels off `URL.hostname`
-//     (userinfo already stripped by the parser), so `xpart.netlify.app.evil.com`,
-//     `evilxpart.netlify.app`, `xpart.netlify.app%2eevil.com`,
-//     `xpart.netlify.app@evil.com` and the trailing-dot FQDN
-//     `xpart.netlify.app.` are all rejected with 403 before a socket is opened.
+//   "xpart" (default) — the allowlist is closed, not open. Every destination is
+//     matched against a stored list of bare hostnames; a target is allowed when
+//     its hostname equals one of them or is a label-anchored subdomain of one.
+//     The list always starts with `xpart.netlify.app` (the unconditional floor,
+//     persisted or not) and is extended at runtime through the password-gated
+//     hosts-add/hosts-remove actions below, up to 50 entries. The match is on
+//     whole DNS labels off `URL.hostname` (userinfo already stripped by the
+//     parser), so `xpart.netlify.app.evil.com`, `evilxpart.netlify.app`,
+//     `xpart.netlify.app%2eevil.com`, `xpart.netlify.app@evil.com` and the
+//     trailing-dot FQDN `xpart.netlify.app.` are all rejected with 403 before a
+//     socket is opened — and the same holds for every other stored host.
 //   "universal" — the site admin has deliberately widened the proxy to any
 //     public host, so the xpart allowlist check is skipped. Every other guard
 //     below is unchanged, and checkTarget is still the single choke point.
@@ -41,13 +45,19 @@
 // a private address is still 403 — widening the allowlist does not open the
 // runtime's own network.
 //
-// CONTROL ENDPOINT (mode only — never a proxy request):
+// CONTROL ENDPOINT (never a proxy request):
 //   GET  /api/proxy?action=mode                                  -> { ok, mode }
 //   POST /api/proxy  { action:"mode", mode:"xpart"|"universal", password }
-// A POST is only a control request when the body says `action: "mode"` at the
-// top level, so a chat POST carrying {"model":…,"messages":[…]} is always
-// forwarded, never swallowed. Reading the flag needs no password (it reveals a
-// boolean); writing it uses the same checkPassword as api-keys.js.
+//   GET  /api/proxy?action=hosts                                 -> { ok, hosts }
+//   POST /api/proxy  { action:"hosts-add",    host, password }
+//   POST /api/proxy  { action:"hosts-remove", host, password }
+// A POST is only a control request when the body declares one of those three
+// actions at the TOP level, so a chat POST carrying {"model":…,"messages":[…]}
+// is always forwarded, never swallowed. Reading the flag or the host list needs
+// no password; writing either uses the same checkPassword as api-keys.js.
+// `xpart.netlify.app` is the permanent first entry and hosts-remove on it is a
+// no-op that still answers 200 with the unchanged list, so the UI can simply
+// re-render. There is deliberately NO rate limiting of any kind here.
 const { cors, storeGet, storeSet } = require('./_shared');
 const { checkPassword } = require('./auth');
 
@@ -57,16 +67,22 @@ const MAX_HOPS = 3;                // redirect hops followed
 const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
 const WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const ALLOWED_HOST = 'xpart.netlify.app';
-const ALLOWED_SUFFIX = '.' + ALLOWED_HOST; // label-anchored, never a bare prefix
+// The unconditional floor of the allowlist: always allowed in xpart mode, never
+// stored, never removable. A failed or unreadable store therefore degrades the
+// allowlist to "xpart only" — closed, never locked out and never widened.
+const DEFAULT_HOST = 'xpart.netlify.app';
+const MAX_HOSTS = 50;                // total entries incl. the floor
 const SHARED_CACHE = 'public, max-age=60';  // default for cacheable GET/HEAD
 const NO_CACHE = 'no-cache, no-transform';  // event streams must never be cached
 
 const MODE_KEY = 'proxy-mode';          // shared store key (Netlify/local fallback)
+const HOSTS_KEY = 'hosts';              // Durable Object storage key AND shared store key
 const MODE_XPART = 'xpart';
 const MODE_UNIVERSAL = 'universal';
 const DEFAULT_MODE = MODE_XPART;        // fail closed: never default to universal
-const MODE_ACTION_RE = /"action"\s*:\s*"mode"/; // cheap pre-filter, see isModeWriteBody
+// Cheap pre-filter, see bodyControlAction: an ordinary chat body is never even
+// parsed, let alone diverted.
+const CONTROL_ACTION_RE = /"action"\s*:\s*"(?:mode|hosts-add|hosts-remove)"/;
 const MODE_DO_NAME = 'proxy-mode';      // the one global Durable Object instance
 const MODE_DO_URL = 'https://do/mode'; // its internal control URL
 
@@ -87,6 +103,11 @@ const V4_TAIL_RE = /(\d{1,3}(?:\.\d{1,3}){3})$/;
 const V6_LINKLOCAL_RE = /^fe[89ab]/;
 const V6_UNIQUE_LOCAL_RE = /^f[cd]/;
 const EVENT_STREAM_RE = /^text\/event-stream\b/i;
+const HOST_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const HOST_TLD_RE = /^[a-z]{2,}$/;
+// Anything that would turn a "bare hostname" into a url fragment: scheme
+// separators, userinfo, path, query, fragment, wildcard, whitespace.
+const HOST_FORBIDDEN_RE = /[/\\:@?#*\s]/;
 
 // Can this runtime hand a ReadableStream to the client? The Cloudflare Worker
 // pipes result.stream into a Response (worker/index.js runFn) and any other
@@ -139,6 +160,53 @@ function normalizeMode(raw) {
   return s === MODE_UNIVERSAL ? MODE_UNIVERSAL : MODE_XPART;
 }
 
+// A candidate allowlist entry: a bare, lowercase, publicly-routable hostname.
+// Trim, lowercase, drop ONE trailing dot, then require only LDH labels under an
+// alphabetic TLD. That rejects schemes ("http://x.com"), ports ("x.com:8080"),
+// paths ("a/b"), userinfo ("u@x.com"), wildcards ("*.x.com"), spaces, IP
+// literals and single-label names in one pass. Returns '' when unusable.
+function cleanHost(raw) {
+  if (typeof raw !== 'string') return '';
+  let h = raw.trim().toLowerCase();
+  if (h.endsWith('.')) h = h.slice(0, -1);
+  if (!h || h.length > 253) return '';
+  if (HOST_FORBIDDEN_RE.test(h)) return '';
+  const labels = h.split('.');
+  if (labels.length < 2) return '';
+  for (const label of labels) {
+    if (!label || label.length > 63 || !HOST_LABEL_RE.test(label)) return '';
+  }
+  // An alphabetic TLD also rules out bare IPv4 literals such as 1.2.3.4.
+  if (!HOST_TLD_RE.test(labels[labels.length - 1])) return '';
+  return h;
+}
+
+// The effective allowlist, always with DEFAULT_HOST first and never longer than
+// MAX_HOSTS. Unusable, duplicate and out-of-order entries in the store are
+// dropped here rather than being trusted, so a garbled or hostile store value
+// can neither widen the proxy past the cap nor produce duplicates in the UI.
+// Reads a bare array or a { hosts } envelope; anything else degrades to the
+// floor alone.
+function normalizeHosts(raw) {
+  const list = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw.hosts : raw;
+  const out = [DEFAULT_HOST];
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      const h = cleanHost(item);
+      if (!h || h === DEFAULT_HOST || out.indexOf(h) !== -1) continue;
+      out.push(h);
+      if (out.length >= MAX_HOSTS) break;
+    }
+  }
+  return out;
+}
+
+// Only the additions are ever persisted — the floor is implicit, so a store
+// wipe or a failed write can never remove xpart.netlify.app.
+function hostAdditions(hosts) {
+  return hosts.filter((h) => h !== DEFAULT_HOST);
+}
+
 // The Durable Object namespace, when this runtime binds one (Cloudflare Worker).
 // Absent on Netlify Functions and `node server.js`, which use the shared store.
 function modeDo() {
@@ -160,23 +228,30 @@ async function callModeDo(ns, init) {
   return { ok: !!(res && res.ok), status: res && res.status, payload };
 }
 
-// The mode for this request, read fresh every time — on the Worker through the
-// Durable Object, elsewhere through the shared store. A failed or unreadable
-// source degrades to the default (xpart), so the failure mode is a closed
-// allowlist, never a silently widened proxy.
-async function currentMode() {
+// Both settings for this request, read fresh every time — on the Worker in ONE
+// Durable Object round trip (the object returns mode and hosts together), and on
+// Netlify/local from the shared store. There is deliberately NO cache: a cached
+// allowlist is exactly what would let a revoked host keep working, and a
+// completed write is already visible to the very next read. A failed or
+// unreadable source degrades to { xpart, [xpart.netlify.app] }: closed
+// allowlist, default host still reachable.
+async function currentSettings() {
   const ns = modeDo();
   if (ns) {
     try {
-      return normalizeMode((await callModeDo(ns)).payload);
+      const payload = (await callModeDo(ns)).payload;
+      return { mode: normalizeMode(payload), hosts: normalizeHosts(payload) };
     } catch {
-      return DEFAULT_MODE;
+      return { mode: DEFAULT_MODE, hosts: normalizeHosts(null) };
     }
   }
   try {
-    return normalizeMode(await storeGet(MODE_KEY, null));
+    const mode = normalizeMode(await storeGet(MODE_KEY, null));
+    let stored = null;
+    try { stored = await storeGet(HOSTS_KEY, null); } catch { stored = null; }
+    return { mode, hosts: normalizeHosts(stored) };
   } catch {
-    return DEFAULT_MODE;
+    return { mode: DEFAULT_MODE, hosts: normalizeHosts(null) };
   }
 }
 
@@ -202,23 +277,31 @@ function queryParam(event, name) {
 // A control write is opted into by the literal field pair at the top level. The
 // regex pre-filter means an ordinary chat body ({model, messages, …}) is never
 // even parsed, let alone diverted; a body that merely mentions "action" deeper
-// down parses and then fails the top-level check, so it still proxies.
-function isModeWriteBody(event) {
+// down parses and then fails the top-level check, so it still proxies. Returns
+// the declared action, or null.
+function bodyControlAction(event) {
   const raw = event.body == null ? '' : String(event.body);
-  if (!MODE_ACTION_RE.test(raw)) return false;
+  if (!CONTROL_ACTION_RE.test(raw)) return null;
   let parsed;
-  try { parsed = JSON.parse(raw); } catch { return false; }
-  return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.action === 'mode';
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const a = parsed.action;
+  return a === 'mode' || a === 'hosts-add' || a === 'hosts-remove' ? a : null;
 }
 
 function controlIntent(event, method) {
-  if (queryParam(event, 'action') === 'mode') {
-    if (method === 'GET' || method === 'HEAD') return 'read';
-    // Query-side intent on a write counts only when the body is empty; a JSON
-    // body always has to declare action: "mode" for itself.
-    if (method === 'POST' && !String(event.body == null ? '' : event.body).trim()) return 'write';
+  const q = queryParam(event, 'action');
+  if (q === 'mode' && (method === 'GET' || method === 'HEAD')) return 'read-mode';
+  if (q === 'hosts' && (method === 'GET' || method === 'HEAD')) return 'read-hosts';
+  // Query-side intent on a mode write counts only when the body is empty; a JSON
+  // body always has to declare its own action.
+  if (q === 'mode' && method === 'POST' && !String(event.body == null ? '' : event.body).trim()) return 'write-mode';
+  if (method === 'POST') {
+    const a = bodyControlAction(event);
+    if (a === 'mode') return 'write-mode';
+    if (a === 'hosts-add') return 'write-hosts-add';
+    if (a === 'hosts-remove') return 'write-hosts-remove';
   }
-  if (method === 'POST' && isModeWriteBody(event)) return 'write';
   return null;
 }
 
@@ -262,13 +345,86 @@ async function setMode(event, reqHeaders) {
   return modeOut(200, { ok: true, mode }, reqHeaders);
 }
 
+// The read-modify-write half of the hosts endpoint. Password first (same
+// checkPassword and same { ok:false, error:"Wrong password" } envelope as the
+// mode write), then the host, then the store. The Durable Object performs the
+// read-modify-write itself inside a storage transaction, so two concurrent
+// adds cannot lose one another and the response list is the authoritative one;
+// the shared-store path (Netlify/local, single instance) does the same maths
+// inline. A 200 is only returned after the write has landed, so a caller that
+// adds a host and immediately proxies to it sees the new allowlist.
+// `op` is 'add' or 'remove'. NO rate limiting here or anywhere in this file.
+async function editHosts(event, reqHeaders, op) {
+  let body;
+  try {
+    body = JSON.parse(String(event.body == null ? '' : event.body) || '{}');
+  } catch {
+    return modeOut(400, { ok: false, error: 'Bad request' }, reqHeaders);
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return modeOut(400, { ok: false, error: 'Bad request' }, reqHeaders);
+  if (!checkPassword(body.password)) return modeOut(401, { ok: false, error: 'Wrong password' }, reqHeaders);
+  const host = cleanHost(body.host);
+  if (!host) {
+    return modeOut(400, { ok: false, error: 'Invalid host — pass a bare hostname like example.com (no scheme, port, path, spaces or wildcard)' }, reqHeaders);
+  }
+  const ns = modeDo();
+  try {
+    if (ns) {
+      const r = await callModeDo(ns, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: op === 'add' ? 'hosts-add' : 'hosts-remove', host }),
+      });
+      if (!r.ok) {
+        // The object owns the cap and the floor, so a 400 from it is a real
+        // rejection (list full) and is passed straight through.
+        const why = (r.payload && typeof r.payload.error === 'string' && r.payload.error) || ('durable object returned ' + r.status);
+        return modeOut(r.status === 400 ? 400 : 502, { ok: false, error: why.slice(0, 200) }, reqHeaders);
+      }
+      return modeOut(200, { ok: true, hosts: normalizeHosts(r.payload) }, reqHeaders);
+    }
+    let stored = null;
+    try { stored = await storeGet(HOSTS_KEY, null); } catch { stored = null; }
+    const current = normalizeHosts(stored);
+    let next;
+    if (op === 'remove') {
+      // The floor can never be removed: 200 with the unchanged list so the UI
+      // can simply re-render instead of special-casing the default entry.
+      next = host === DEFAULT_HOST ? current : current.filter((h) => h !== host);
+    } else if (current.indexOf(host) !== -1) {
+      next = current; // already present: no duplicate, no error
+    } else if (current.length >= MAX_HOSTS) {
+      return modeOut(400, { ok: false, error: 'Host list is full (limit ' + MAX_HOSTS + ')' }, reqHeaders);
+    } else {
+      next = current.concat(host);
+    }
+    if (next.length !== current.length) await storeSet(HOSTS_KEY, hostAdditions(next));
+    return modeOut(200, { ok: true, hosts: next }, reqHeaders);
+  } catch (e) {
+    return modeOut(502, { ok: false, error: 'Could not update the host allowlist: ' + String((e && e.message) || e).slice(0, 200) }, reqHeaders);
+  }
+}
+
 // The allowlist, and the only place a destination is decided. checkTarget is
 // the single choke point: it gates the client's url and every redirect hop.
-// `mode` only ever decides whether the xpart host allowlist is consulted — the
+// `mode` only ever decides whether the host allowlist is consulted — the
 // protocol, default-port and private-range guards run in both modes.
-function isAllowedHost(hostname) {
+function hostAllowed(hostname, hosts) {
   const h = String(hostname || '').toLowerCase();
-  return h === ALLOWED_HOST || h.endsWith(ALLOWED_SUFFIX);
+  for (const base of hosts) {
+    // Label-anchored on both sides: equality or a "."-prefixed tail, never a
+    // bare suffix, so xpart.netlify.app.evil.com and evilxpart.netlify.app
+    // fail for the xpart entry and the same holds for every stored host.
+    if (h === base || h.endsWith('.' + base)) return true;
+  }
+  return false;
+}
+
+// Enough of the list to debug a 403 without turning it into a 4 KB error body.
+function hostsSummary(hosts) {
+  const shown = hosts.slice(0, 5);
+  const more = hosts.length - shown.length;
+  return shown.join(', ') + (more > 0 ? ' +' + more + ' more' : '');
 }
 
 // Second layer under the allowlist: destinations that are not publicly routable.
@@ -308,7 +464,7 @@ function isPrivateHost(hostname) {
   return false;
 }
 
-function checkTarget(raw, reqHeaders, mode) {
+function checkTarget(raw, reqHeaders, mode, hosts) {
   const tag = modeTag(mode);
   let u;
   try {
@@ -319,12 +475,13 @@ function checkTarget(raw, reqHeaders, mode) {
   if (u.protocol !== 'https:' && u.protocol !== 'http:') {
     return { error: err(403, 'Only http: and https: targets are allowed' + tag, reqHeaders) };
   }
-  // Whole-label allowlist, checked before any socket work. Comparison is on
-  // u.hostname, so userinfo (xpart.netlify.app@evil.com) cannot smuggle a host
-  // in, and the default port is already normalised to '' by the parser. Skipped
-  // only in universal mode, where the admin has explicitly widened the proxy.
-  if (mode !== MODE_UNIVERSAL && !isAllowedHost(u.hostname)) {
-    return { error: err(403, 'Only ' + ALLOWED_HOST + ' and its subdomains are proxied' + tag, reqHeaders) };
+  // Whole-label allowlist (stored list, floor always included), checked before
+  // any socket work. Comparison is on u.hostname, so userinfo
+  // (xpart.netlify.app@evil.com) cannot smuggle a host in, and the default port
+  // is already normalised to '' by the parser. Skipped only in universal mode,
+  // where the admin has explicitly widened the proxy.
+  if (mode !== MODE_UNIVERSAL && !hostAllowed(u.hostname, hosts)) {
+    return { error: err(403, 'Only proxied hosts are allowed: ' + hostsSummary(hosts) + tag, reqHeaders) };
   }
   if (u.port) {
     return { error: err(403, 'Only default ports are proxied (no explicit port on ' + u.hostname + ')' + tag, reqHeaders) };
@@ -514,17 +671,21 @@ exports.handler = async (event) => {
   // Control plane, before any proxy work and before a target is even required:
   // the mode endpoint is a different verb, and must answer without a url.
   const intent = controlIntent(event, incoming);
-  if (intent === 'read') return modeOut(200, { ok: true, mode: await currentMode() }, reqHeaders);
-  if (intent === 'write') return setMode(event, reqHeaders);
+  if (intent === 'read-mode') return modeOut(200, { ok: true, mode: (await currentSettings()).mode }, reqHeaders);
+  if (intent === 'read-hosts') return modeOut(200, { ok: true, hosts: (await currentSettings()).hosts }, reqHeaders);
+  if (intent === 'write-mode') return setMode(event, reqHeaders);
+  if (intent === 'write-hosts-add') return editHosts(event, reqHeaders, 'add');
+  if (intent === 'write-hosts-remove') return editHosts(event, reqHeaders, 'remove');
 
   const raw = targetFrom(event);
   if (!raw) return err(400, 'Missing target — use /api/proxy?url=https://xpart.netlify.app/... or the x-proxy-url header', reqHeaders);
 
   // Read fresh on every proxied request: one DO round trip on the Worker, one
-  // store read elsewhere. No cache, so the next request after a flip already
-  // sees the new mode.
-  const mode = await currentMode();
-  const checked = checkTarget(raw, reqHeaders, mode);
+  // store read elsewhere. No cache, so the next request after a mode flip or a
+  // hosts add/remove already sees the new allowlist.
+  const settings = await currentSettings();
+  const mode = settings.mode;
+  const checked = checkTarget(raw, reqHeaders, mode, settings.hosts);
   if (checked.error) return checked.error;
 
   let body = WITH_BODY.has(incoming) ? (event.body == null ? '' : String(event.body)) : undefined;
@@ -552,7 +713,7 @@ exports.handler = async (event) => {
         let next = { error: true };
         if (location) {
           try {
-            next = checkTarget(new URL(location, url), reqHeaders, mode);
+            next = checkTarget(new URL(location, url), reqHeaders, mode, settings.hosts);
           } catch { next = { error: true }; }
         }
         h.settle();

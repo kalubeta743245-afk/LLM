@@ -9,6 +9,7 @@ const PROVIDERS = [
   { id:'apinex', name:'APInex', color:'#5C766D', baseURL:'https://api.apinex.bond/v1', defaultModel:'free/deepseek-v4.1-flash', icon:'https://www.google.com/s2/favicons?domain=apinex.bond&sz=128' },
   { id:'novita', name:'Novita', color:'#8b7cf6', baseURL:'https://api.novita.ai/v3/openai', defaultModel:'inclusionai/ling-3.1-flash', icon:'https://novita.ai/favicon.ico' },
   { id:'apmix', name:'APMIX', color:'#d946a8', baseURL:'https://api.apmix.ai/v1', defaultModel:'deepseek-v4-flash-free', icon:'https://apmix.ai/favicon.ico' },
+  { id:'cleanapis', name:'Clean APIs', color:'#2dd4bf', baseURL:'https://cleanapis.com/v1', defaultModel:'deepseek-v4-flash-0731', icon:'https://cleanapis.com/favicon.ico' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;
@@ -364,12 +365,10 @@ function buildCard(p, index) {
   cat.appendChild(pickRow);
 
   const customRow = el('div', 'field-row');
-  const customModel = el('input', 'input');
+  const customModel = el('input', 'input input-mono');
   customModel.placeholder = 'Custom model id (optional)…';
   customModel.autocomplete = 'off';
   customModel.spellcheck = false;
-  customModel.style.fontFamily = 'var(--mono)';
-  customModel.style.fontSize = '12px';
   customModel.style.flex = '1 1 200px';
   customModel.title = 'Type any model id to probe — works even if it is not in the catalog';
   const clearCustom = el('button', 'btn btn-xs', 'clear');
@@ -859,6 +858,9 @@ function wireProxyPanel() {
       if (noteUni) noteUni.hidden = m !== 'universal';
       if (noteX) noteX.hidden = m === 'universal';
       modeLabel?.classList.remove('is-busy');
+      // Universal mode bypasses the allowlist server-side, so the section says
+      // so instead of pretending the list is still being checked.
+      setInactive(m === 'universal');
       return m;
     }
     function lock(on) {
@@ -892,6 +894,121 @@ function wireProxyPanel() {
         lock(false);
       }
     });
+
+    /* Base allowlist — the hosts the proxy may reach while universal mode is
+       off. Same origin endpoint as the mode switch above, same password, same
+       "never show an optimistic guess" rule: the server's list is the only one
+       ever rendered, and any failure falls back to the last list it confirmed. */
+    const DEFAULT_HOST = 'xpart.netlify.app';
+    const hostsBox = document.getElementById('px-hosts');
+    const hostsList = document.getElementById('px-hosts-list');
+    const hostsInput = document.getElementById('px-hosts-input');
+    const hostsAdd = document.getElementById('px-hosts-add');
+    const hostsErr = document.getElementById('px-hosts-err');
+    const hostsNote = document.getElementById('px-hosts-note');
+    let hosts = [];
+
+    function setInactive(inactive) {
+      hostsBox?.classList.toggle('is-off', inactive);
+      if (hostsNote) hostsNote.textContent = inactive ? 'not enforced' : 'enforced';
+    }
+    function hostsFail(msg) {
+      if (hostsErr) { hostsErr.textContent = msg; hostsErr.classList.add('is-err'); }
+    }
+    function hostsClearErr() {
+      if (hostsErr) { hostsErr.textContent = ''; hostsErr.classList.remove('is-err'); }
+    }
+    function renderHosts() {
+      if (!hostsList) return;
+      hostsList.innerHTML = '';
+      if (!hosts.length) {
+        hostsList.appendChild(el('p', 'hint', 'No bases allowed yet.'));
+        return;
+      }
+      hosts.forEach((host, i) => {
+        const row = el('div', 'usage-srow px-hrow');
+        row.appendChild(el('span', 'usage-sname', host));
+        row.title = host;
+        if (host === DEFAULT_HOST) {
+          // Permanent entry: the server refuses to remove it, so no button here.
+          row.appendChild(el('span', 'pill', 'default'));
+        } else {
+          const del = el('button', 'icon-btn');
+          del.type = 'button';
+          del.innerHTML = ICON.x;
+          del.title = 'Remove ' + host;
+          del.setAttribute('aria-label', 'Remove ' + host);
+          del.onclick = () => write('hosts-remove', host, del);
+          row.appendChild(del);
+        }
+        row.dataset.i = String(i);
+        hostsList.appendChild(row);
+      });
+    }
+    function adopt(list) {
+      hosts = Array.isArray(list) ? list.filter(h => typeof h === 'string' && h) : [];
+      renderHosts();
+    }
+    async function hostsCall(action, host) {
+      const r = action
+        ? await fetch(modeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, host, password: localStorage.getItem('mlab_pw') || '' })
+          })
+        : await fetch(modeUrl + '?action=hosts');
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || (r.status === 401 ? 'Wrong password' : 'HTTP ' + r.status));
+      return d;
+    }
+    async function write(action, host, btn) {
+      hostsClearErr();
+      setBusy(btn, true);
+      try {
+        const d = await hostsCall(action, host);
+        adopt(d.hosts);
+        if (hostsInput) hostsInput.value = '';
+        toast(action === 'hosts-add' ? 'Base allowed' : 'Base removed', 'ok');
+      } catch (ex) {
+        hostsFail((ex && ex.message) || 'Update failed');
+        adopt(hosts);
+        toast((ex && ex.message) || 'Update failed', 'err');
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+    // Trims only what is obviously junk (scheme, path, trailing slash, case).
+    // Every real rule — wildcard, port, label shape, TLD — is left to the
+    // server, which answers with its own wording and is shown verbatim.
+    function cleanInput(raw) {
+      let h = String(raw || '').trim().toLowerCase();
+      h = h.replace(/^[a-z]+:\/\//, '').split('/')[0].trim();
+      return h.replace(/\.+$/, '');
+    }
+    async function addHost() {
+      const host = cleanInput(hostsInput && hostsInput.value);
+      if (!host) { hostsFail('Enter a hostname like example.com'); return; }
+      await write('hosts-add', host, hostsAdd);
+    }
+
+    if (hostsBox) {
+      // Ships disabled, exactly like the mode switch: one read decides both the
+      // list and whether the section is being enforced.
+      if (hostsAdd) hostsAdd.disabled = true;
+      if (hostsInput) hostsInput.disabled = true;
+      setInactive(false);
+      hostsCall('').then((d) => {
+        adopt(d.hosts);
+      }).catch((ex) => {
+        hostsFail((ex && ex.message) || 'Could not read the allowlist');
+      }).finally(() => {
+        if (hostsAdd) hostsAdd.disabled = false;
+        if (hostsInput) hostsInput.disabled = false;
+      });
+      hostsAdd?.addEventListener('click', addHost);
+      hostsInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addHost(); } });
+      hostsInput?.addEventListener('input', hostsClearErr);
+    }
   }
 
   sync();
