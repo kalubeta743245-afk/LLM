@@ -10,6 +10,7 @@ const PROVIDERS = [
   { id:'novita', name:'Novita', color:'#8b7cf6', baseURL:'https://api.novita.ai/v3/openai', defaultModel:'inclusionai/ling-3.1-flash', icon:'https://novita.ai/favicon.ico' },
   { id:'apmix', name:'APMIX', color:'#d946a8', baseURL:'https://api.apmix.ai/v1', defaultModel:'deepseek-v4-flash-free', icon:'https://apmix.ai/favicon.ico' },
   { id:'cleanapis', name:'Clean APIs', color:'#2dd4bf', baseURL:'https://cleanapis.com/v1', defaultModel:'deepseek-v4-flash-0731', icon:'https://cleanapis.com/favicon.ico' },
+  { id:'nvidia2', name:'NVIDIA NIM 2', color:'#90c53f', baseURL:'https://integrate.api.nvidia.com/v1', defaultModel:'z-ai/glm-5.3-flash', icon:'https://developer.download.nvidia.com/icons/m48-nim-256px-blk.png' },
 ];
 
 const SVG = (i) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i}</svg>`;

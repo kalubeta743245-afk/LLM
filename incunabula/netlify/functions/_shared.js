@@ -94,6 +94,15 @@ const PROVIDERS = [
     apiKey: '',
     authHeader: 'x-api-key',
   },
+  {
+    id: 'nvidia2',
+    name: 'NVIDIA NIM 2',
+    tag: 'N2',
+    color: '#90c53f',
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    apiKey: '',
+    timeoutMs: 120000,
+  },
 ];
 
 // Site probes only. `provider.timeoutMs` is an optional per-provider override
@@ -153,6 +162,7 @@ function secretFor(id) {
     novita: 'NOVITA_API_KEY',
     apmix: 'APMIX_API_KEY',
     cleanapis: 'CLEANAPIS_API_KEY',
+    nvidia2: 'NVIDIA2_API_KEY',
   };
   const name = map[id];
   if (!name) return '';
